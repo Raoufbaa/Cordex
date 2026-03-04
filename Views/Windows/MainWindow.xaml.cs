@@ -270,16 +270,17 @@ public partial class MainWindow : Window
         // Check if hardware acceleration is enabled
         bool hwAccel = SettingsManager.Current.HardwareAcceleration;
 
-        // Essential media and WebRTC flags
+        // Essential media stream flags
         settings.CefCommandLineArgs.Add("enable-media-stream", "1");
         settings.CefCommandLineArgs.Add("enable-usermedia-screen-capturing", "1");
         settings.CefCommandLineArgs.Add("autoplay-policy", "no-user-gesture-required");
-        
-        // Essential Discord WebRTC routing flags for DTLS connection
+
+        // NOTE: WebRTC IP handling (all_interfaces, multiple_routes, nonproxied_udp)
+        // must be set as RequestContext preferences — NOT command-line args.
+        // They are applied after CEF init in ApplyWebRtcRequestContextPreferences().
+        // Passing them as CLI args has no effect in CefSharp and can cause conflicts.
         settings.CefCommandLineArgs.Add("enforce-webrtc-ip-permission-check", "0");
-        settings.CefCommandLineArgs.Add("webrtc.ip_handling_policy", "all_interfaces");
-        settings.CefCommandLineArgs.Add("webrtc.multiple_routes_enabled", "1");
-        
+
         // Performance settings based on hardware acceleration
         if (hwAccel)
         {
@@ -293,13 +294,35 @@ public partial class MainWindow : Window
             settings.CefCommandLineArgs.Add("disable-gpu-compositing", "1");
             settings.CefCommandLineArgs.Add("disable-accelerated-video-decode", "1");
         }
-        
+
         settings.CefCommandLineArgs.Add("disable-renderer-backgrounding", "1");
         settings.CefCommandLineArgs.Add("disable-background-timer-throttling", "1");
         settings.CefCommandLineArgs.Add("disable-backgrounding-occluded-windows", "1");
 
         Cef.Initialize(settings, performDependencyCheck: false, browserProcessHandler: null);
         _cefInitialized = true;
+
+        // Apply WebRTC routing preferences via RequestContext (the only way that works in CefSharp)
+        ApplyWebRtcRequestContextPreferences();
+    }
+
+    // Sets WebRTC IP routing preferences on the CEF UI thread via RequestContext.
+    // This is the only reliable method in CefSharp — command-line args have no effect
+    // for these specific WebRTC preferences.
+    private static void ApplyWebRtcRequestContextPreferences()
+    {
+        _ = Cef.UIThreadTaskFactory.StartNew(() =>
+        {
+            var ctx = Cef.GetGlobalRequestContext();
+            if (ctx == null) return;
+
+            // All interfaces: allows Discord to enumerate all local IPs for ICE candidates
+            ctx.SetPreference("webrtc.ip_handling_policy", "all_interfaces", out _);
+            // Allow multiple ICE routes (host, srflx, relay) simultaneously
+            ctx.SetPreference("webrtc.multiple_routes_enabled", true, out _);
+            // Allow UDP even when a proxy is configured (critical for DTLS handshake)
+            ctx.SetPreference("webrtc.nonproxied_udp_enabled", true, out _);
+        });
     }
 
     // ── Startup ──────────────────────────────────────────────────────────────
@@ -332,27 +355,98 @@ public partial class MainWindow : Window
 
     private void OnBrowserLoadingStateChanged(object? sender, LoadingStateChangedEventArgs e)
     {
-        if (!e.IsLoading && !_discordLoaded)
+        if (!e.IsLoading)
         {
-            _discordLoaded = true;
-            Dispatcher.Invoke(() =>
+            if (!_discordLoaded)
             {
-                // Wait a bit more for Discord to fully initialize
-                System.Threading.Tasks.Task.Delay(3000).ContinueWith(_ =>
+                _discordLoaded = true;
+                Dispatcher.Invoke(() =>
                 {
-                    Dispatcher.Invoke(() =>
+                    // Wait a bit more for Discord to fully initialize before keybinds
+                    System.Threading.Tasks.Task.Delay(3000).ContinueWith(_ =>
                     {
-                        InitKeybinds();
-                        
-                        // Apply reduced motion CSS if enabled
-                        if (SettingsManager.Current.ReducedMotion)
+                        Dispatcher.Invoke(() =>
                         {
-                            ApplyReducedMotion();
-                        }
+                            InitKeybinds();
+
+                            // Apply reduced motion CSS if enabled
+                            if (SettingsManager.Current.ReducedMotion)
+                                ApplyReducedMotion();
+                        });
                     });
                 });
-            });
+            }
+
+            // Inject WebRTC recovery script on every page load.
+            // ROOT CAUSE OF DTLS HANG:
+            //   When Discord disconnects from a voice channel, it calls getCodecSurvey()
+            //   which throws "getCodecSurvey is not implemented on MediaEngine of browsers".
+            //   This unhandled error corrupts CefSharp's WebRTC WASM state — UDP ports
+            //   from the previous session remain locked, so the next DTLS handshake hangs.
+            // FIX: Catch the error + any RTCPeerConnection failure, then reload the page
+            //   to reset the WebRTC sandbox, giving every voice join a clean slate.
+            Dispatcher.Invoke(InjectWebRtcRecoveryScript);
         }
+    }
+
+    private void InjectWebRtcRecoveryScript()
+    {
+        const string script = @"
+(function() {
+    if (window.__cordexWebRtcRecovery) return;
+    window.__cordexWebRtcRecovery = true;
+
+    var _reloadPending = false;
+    function scheduleReload(reason) {
+        if (_reloadPending) return;
+        _reloadPending = true;
+        console.warn('[Cordex] WebRTC recovery triggered (' + reason + '). Reloading in 800ms to reset sandbox...');
+        setTimeout(function() { location.reload(); }, 800);
+    }
+
+    // Catch the getCodecSurvey error that Discord throws on voice disconnect.
+    // This is the primary cause of the DTLS hang on reconnect.
+    window.addEventListener('unhandledrejection', function(e) {
+        var msg = (e && e.reason && e.reason.message) ? e.reason.message : '';
+        if (msg.indexOf('getCodecSurvey') !== -1 ||
+            msg.indexOf('MediaEngine') !== -1) {
+            e.preventDefault();
+            scheduleReload('getCodecSurvey unhandledrejection');
+        }
+    });
+
+    window.addEventListener('error', function(e) {
+        var msg = (e && e.message) ? e.message : '';
+        if (msg.indexOf('getCodecSurvey') !== -1 ||
+            msg.indexOf('MediaEngine') !== -1) {
+            e.preventDefault();
+            scheduleReload('getCodecSurvey error');
+        }
+    });
+
+    // Also intercept RTCPeerConnection to detect DTLS/ICE failures directly.
+    // If an RTCPeerConnection enters 'failed' state, the DTLS negotiation is dead.
+    var _OrigRTCPeerConnection = window.RTCPeerConnection;
+    if (_OrigRTCPeerConnection) {
+        window.RTCPeerConnection = function(config, constraints) {
+            var pc = new _OrigRTCPeerConnection(config, constraints);
+            pc.addEventListener('connectionstatechange', function() {
+                if (pc.connectionState === 'failed') {
+                    scheduleReload('RTCPeerConnection failed');
+                }
+            });
+            pc.addEventListener('iceconnectionstatechange', function() {
+                if (pc.iceConnectionState === 'failed') {
+                    scheduleReload('ICE connection failed');
+                }
+            });
+            return pc;
+        };
+        window.RTCPeerConnection.prototype = _OrigRTCPeerConnection.prototype;
+    }
+})();
+";
+        ExecuteScript(script);
     }
 
     private void ApplyReducedMotion()
