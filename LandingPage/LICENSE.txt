@@ -1,0 +1,88 @@
+# FLUXDESK END-USER LICENSE AGREEMENT (EULA)
+
+**Copyright (c) 2025. All Rights Reserved.**
+
+IMPORTANT - READ CAREFULLY: This End-User License Agreement ("EULA") is a legal agreement between you (either an individual or a single entity) and the copyright holder for the Fluxdesk software product, which includes computer software and may include associated media, printed materials, and online or electronic documentation ("Software").
+
+By installing, copying, or otherwise using the Software, you agree to be bound by the terms of this EULA. If you do not agree to the terms of this EULA, do not install or use the Software.
+
+## 1. LICENSE GRANT
+
+Subject to the terms and conditions of this EULA, you are granted a limited, non-exclusive, non-transferable, non-sublicensable, revocable license to:
+
+a) Install and use the Software on devices you own or control
+b) Use the Software solely for your personal or internal business purposes
+
+## 2. RESTRICTIONS
+
+You may NOT, and you agree not to permit any third party to:
+
+a) **Copy, reproduce, or distribute** the Software in any form
+b) **Modify, adapt, translate, reverse engineer, decompile, disassemble**, or create derivative works based on the Software
+c) **Rent, lease, loan, sell, sublicense, assign**, or otherwise transfer rights to the Software
+d) Remove, alter, or obscure any proprietary notices (including copyright and trademark notices) on the Software
+e) Use the Software for any purpose other than as expressly permitted by this EULA
+f) Use the Software in any service bureau, time-sharing, or hosting capacity
+g) Circumvent or disable any security features or technical protection measures in the Software
+h) Publicly display, perform, or distribute the Software
+i) Use the Software to create a competing product or service
+
+## 3. INTELLECTUAL PROPERTY RIGHTS
+
+The Software is licensed, not sold. This EULA does not grant you any rights to trademarks, service marks, or intellectual property. All title, ownership rights, and intellectual property rights in and to the Software remain the exclusive property of the copyright holder. The Software is protected by copyright laws, international copyright treaties, and other intellectual property laws and treaties.
+
+## 4. CONFIDENTIALITY
+
+The Software contains valuable trade secrets and proprietary information. You agree to maintain the confidentiality of the Software and not to disclose, provide, or otherwise make available such confidential information to any third party.
+
+## 5. TERM AND TERMINATION
+
+This EULA is effective until terminated. Your rights under this EULA will terminate automatically without notice if you fail to comply with any term of this EULA. Upon termination, you must:
+
+a) Cease all use of the Software immediately
+b) Destroy all copies of the Software in your possession or control
+c) Certify in writing that you have complied with these requirements (if requested)
+
+## 6. WARRANTY DISCLAIMER
+
+THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND. TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE COPYRIGHT HOLDER DISCLAIMS ALL WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. THE COPYRIGHT HOLDER DOES NOT WARRANT THAT THE SOFTWARE WILL MEET YOUR REQUIREMENTS OR THAT THE OPERATION OF THE SOFTWARE WILL BE UNINTERRUPTED OR ERROR-FREE.
+
+## 7. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY SPECIAL, INCIDENTAL, INDIRECT, CONSEQUENTIAL, OR PUNITIVE DAMAGES WHATSOEVER (INCLUDING, WITHOUT LIMITATION, DAMAGES FOR LOSS OF BUSINESS PROFITS, BUSINESS INTERRUPTION, LOSS OF BUSINESS INFORMATION, OR ANY OTHER PECUNIARY LOSS) ARISING OUT OF THE USE OF OR INABILITY TO USE THE SOFTWARE, EVEN IF THE COPYRIGHT HOLDER HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+## 8. EXPORT RESTRICTIONS
+
+You agree to comply with all applicable international and national laws that apply to the Software, including export control laws and regulations.
+
+## 9. UPDATES AND SUPPORT
+
+The copyright holder is not obligated to provide maintenance, technical support, updates, or upgrades for the Software. Any such services, if provided, are at the sole discretion of the copyright holder and may be subject to additional terms.
+
+## 10. ENTIRE AGREEMENT
+
+This EULA constitutes the entire agreement between you and the copyright holder concerning the Software and supersedes all prior or contemporaneous oral or written communications, proposals, and representations with respect to the Software.
+
+## 11. SEVERABILITY
+
+If any provision of this EULA is held to be unenforceable, that provision shall be removed and the remaining provisions shall remain in full force and effect.
+
+## 12. GOVERNING LAW
+
+This EULA shall be governed by and construed in accordance with the laws of Algeria, Djelfa/Hassi Bahbah, without regard to its conflict of law provisions.
+
+## 13. ACKNOWLEDGMENT
+
+BY INSTALLING, COPYING, OR OTHERWISE USING THE SOFTWARE, YOU ACKNOWLEDGE THAT YOU HAVE READ THIS EULA, UNDERSTAND IT, AND AGREE TO BE BOUND BY ITS TERMS AND CONDITIONS.
+
+---
+
+**Contact Information:**
+
+For questions regarding this EULA or Fluxdesk, please contact:
+
+- **Email:** raoufbakhti32@gmail.com
+- **Phone:** +213 79 87 09 01
+- **Location:** Hassi Bahbah, Djelfa, Algeria
+
+Last Updated: November 2025

@@ -1,0 +1,7 @@
+{
+  "DownloadUrl": "https://github.com/Raoufbaa/Cordex/releases/latest",
+  "ReleaseNotes": "Bug fixes and improvements",
+  "SupportedVersions": ["1.1.1", "1.1.2", "1.1.3"],
+  "AppDisabled": false,
+  "AppDisabledMessage": "The app is currently down for maintenance."
+}
