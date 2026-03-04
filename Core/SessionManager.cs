@@ -1,14 +1,14 @@
 using System;
 using System.IO;
 
-namespace Nextcord.Core;
+namespace Cordex.Core;
 
 public static class SessionManager
 {
     public static string DataDirectory =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Nextcord"
+            "Cordex"
         );
 
     public static string CacheDirectory =>

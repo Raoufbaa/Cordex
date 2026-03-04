@@ -2,13 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Input;
-using Nextcord.Core;
+using Cordex.Core;
 using Wpf.Ui.Controls;
 using WpfColor   = System.Windows.Media.Color;
 using WpfBrushes = System.Windows.Media.Brushes;
 using WpfBrush   = System.Windows.Media.SolidColorBrush;
 
-namespace Nextcord;
+namespace Cordex;
 
 public partial class SettingsWindow : FluentWindow
 {

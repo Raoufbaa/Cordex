@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using WinForms = System.Windows.Forms;
 
-namespace Nextcord.Core;
+namespace Cordex.Core;
 
 public enum MuteState { Default, Muted, Unmuted, Talking }
 
@@ -36,13 +36,13 @@ public class TrayManager : IDisposable
     public void Initialize()
     {
         var menu = new WinForms.ContextMenuStrip();
-        menu.Items.Add("Open Nextcord", null, (_, _) => OpenRequested?.Invoke());
+        menu.Items.Add("Open Cordex", null, (_, _) => OpenRequested?.Invoke());
         menu.Items.Add("Toggle Mute",   null, (_, _) => MuteToggled?.Invoke());
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add("Exit",          null, (_, _) => ExitRequested?.Invoke());
 
         _tray.Icon             = _iconApp;
-        _tray.Text             = "Nextcord";
+        _tray.Text             = "Cordex";
         _tray.ContextMenuStrip = menu;
         _tray.Visible          = true;
         _tray.DoubleClick     += (_, _) => OpenRequested?.Invoke();
@@ -52,10 +52,10 @@ public class TrayManager : IDisposable
     {
         (_tray.Icon, _tray.Text) = state switch
         {
-            MuteState.Muted   => (_iconMuted,   "Nextcord - Muted"),
-            MuteState.Unmuted => (_iconUnmuted, "Nextcord - Unmuted"),
-            MuteState.Talking => (_iconTalking, "Nextcord - Talking"),
-            _                 => (_iconApp,     "Nextcord"),
+            MuteState.Muted   => (_iconMuted,   "Cordex - Muted"),
+            MuteState.Unmuted => (_iconUnmuted, "Cordex - Unmuted"),
+            MuteState.Talking => (_iconTalking, "Cordex - Talking"),
+            _                 => (_iconApp,     "Cordex"),
         };
     }
 

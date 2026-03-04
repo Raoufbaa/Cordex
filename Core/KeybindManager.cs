@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 
-namespace Nextcord.Core;
+namespace Cordex.Core;
 
 public class KeybindManager
 {

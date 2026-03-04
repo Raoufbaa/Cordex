@@ -2,7 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-namespace Nextcord.Core;
+namespace Cordex.Core;
 
 public class AudioMonitor : IDisposable
 {

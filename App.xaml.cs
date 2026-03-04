@@ -1,7 +1,7 @@
 using System;
 using System.Threading;
 
-namespace Nextcord;
+namespace Cordex;
 
 public partial class App : System.Windows.Application
 {
@@ -13,7 +13,7 @@ public partial class App : System.Windows.Application
         {
             System.Windows.MessageBox.Show(
                 ex.ExceptionObject?.ToString() ?? "Unknown error",
-                "Nextcord — Crash",
+                "Cordex — Crash",
                 System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Error
             );
@@ -23,19 +23,19 @@ public partial class App : System.Windows.Application
         {
             System.Windows.MessageBox.Show(
                 ex.Exception?.ToString() ?? "Unknown error",
-                "Nextcord — Dispatcher Crash",
+                "Cordex — Dispatcher Crash",
                 System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Error
             );
             ex.Handled = true;
         };
 
-        _mutex = new Mutex(true, "Nextcord_SingleInstance_Mutex", out bool isNew);
+        _mutex = new Mutex(true, "Cordex_SingleInstance_Mutex", out bool isNew);
         if (!isNew)
         {
             System.Windows.MessageBox.Show(
-                "Nextcord is already running. Check the system tray.",
-                "Nextcord",
+                "Cordex is already running. Check the system tray.",
+                "Cordex",
                 System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Information
             );
@@ -53,7 +53,7 @@ public partial class App : System.Windows.Application
         {
             System.Windows.MessageBox.Show(
                 ex.ToString(),
-                "Nextcord — Failed to Start",
+                "Cordex — Failed to Start",
                 System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Error
             );

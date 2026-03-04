@@ -1,10 +1,10 @@
 <Window
-    x:Class="Nextcord.MainWindow"
+    x:Class="Cordex.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:cef="clr-namespace:CefSharp.Wpf;assembly=CefSharp.Wpf"
-    Title="Nextcord"
+    Title="Cordex"
     Icon="pack://application:,,,/Assets/app.ico"
     Width="1100"
     Height="700"
@@ -131,7 +131,7 @@
 
                     <Button
                         Style="{StaticResource GearBtn}"
-                        ToolTip="Nextcord Settings"
+                        ToolTip="Cordex Settings"
                         Click="BtnSettings_Click">
                         <ui:SymbolIcon Symbol="Settings24" FontSize="18" Foreground="#96989D"/>
                     </Button>

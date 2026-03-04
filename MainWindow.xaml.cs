@@ -5,9 +5,9 @@ using System.Windows;
 using System.Windows.Interop;
 using CefSharp;
 using CefSharp.Wpf;
-using Nextcord.Core;
+using Cordex.Core;
 
-namespace Nextcord;
+namespace Cordex;
 
 public partial class MainWindow : Window
 {

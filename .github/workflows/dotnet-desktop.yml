@@ -1,0 +1,174 @@
+name: Cordex CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            runtime: win-x64
+            platform: windows
+          - os: ubuntu-latest
+            runtime: linux-x64
+            platform: linux
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install .NET 10
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build
+      run: dotnet build --configuration Release --no-restore
+
+    - name: Run tests
+      run: dotnet test --configuration Release --no-build --verbosity normal
+      continue-on-error: true
+
+    - name: Publish
+      run: dotnet publish --configuration Release --runtime ${{ matrix.runtime }} --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false --output ./publish
+
+    # ── Windows: Compile Inno Setup installer ──
+    - name: Compile Inno Setup Script
+      if: matrix.platform == 'windows'
+      uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+      with:
+        path: setup.iss
+        options: /O+
+
+    # ── Linux: Package as tar.gz ──
+    - name: Package Linux Build
+      if: matrix.platform == 'linux'
+      run: tar -czf Cordex-linux-x64.tar.gz -C ./publish .
+
+    # ── Upload artifacts ──
+    - name: Upload Windows Artifact
+      if: matrix.platform == 'windows'
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-installer
+        path: ./Output/Cordex_Setup.exe
+        retention-days: 90
+
+    - name: Upload Linux Artifact
+      if: matrix.platform == 'linux'
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-package
+        path: Cordex-linux-x64.tar.gz
+        retention-days: 90
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: ./artifacts
+
+    - name: Generate version tag
+      id: tag_version
+      run: |
+        version="v1.1.${{ github.run_number }}"
+        echo "version=$version" >> $GITHUB_OUTPUT
+        echo "Generated version: $version"
+
+    - name: Create Versioned Release
+      uses: softprops/action-gh-release@v2
+      with:
+        repository: Raoufbaa/Cordex-Releases
+        token: ${{ secrets.RELEASES_PAT }}
+        tag_name: ${{ steps.tag_version.outputs.version }}
+        name: "Cordex ${{ steps.tag_version.outputs.version }}"
+        body: |
+          ## Cordex Release ${{ steps.tag_version.outputs.version }}
+
+          **Build Date:** ${{ github.event.head_commit.timestamp }}
+          **Commit:** ${{ github.sha }}
+
+          ### Changes
+          ${{ github.event.head_commit.message }}
+
+          ### What's Included
+          - Cordex application (Windows installer, Linux archive)
+          - Self-contained .NET 10 runtime (no install required)
+
+          ### Download
+          | Platform | File |
+          |---|---|
+          | Windows | `Cordex_Setup.exe` |
+          | Linux | `Cordex-linux-x64.tar.gz` |
+
+          ### System Requirements
+          - Windows 10 or later / Ubuntu 20.04+
+          - .NET 10 Runtime (self-contained, no install required)
+          - 4GB RAM minimum
+        draft: false
+        prerelease: false
+        files: |
+          ./artifacts/windows-installer/Cordex_Setup.exe
+          ./artifacts/linux-package/Cordex-linux-x64.tar.gz
+
+    - name: Update Latest Release
+      uses: softprops/action-gh-release@v2
+      with:
+        repository: Raoufbaa/Cordex-Releases
+        token: ${{ secrets.RELEASES_PAT }}
+        tag_name: latest
+        name: "Latest Development Build"
+        body: |
+          ## ⚡ Latest Cordex Build
+
+          This is the most recent build from the main branch.
+
+          **Version:** ${{ steps.tag_version.outputs.version }}
+          **Build Date:** ${{ github.event.head_commit.timestamp }}
+          **Commit:** ${{ github.sha }}
+
+          ### What's Included
+          - Cordex application (Windows installer, Linux archive)
+          - Self-contained .NET 10 runtime (no install required)
+
+          ### ⚠️ Note
+          This is a development build. For stable releases, check the versioned releases.
+
+          ### Download
+          - **Windows:** `Cordex_Setup.exe`
+          - **Linux:** `Cordex-linux-x64.tar.gz`
+        draft: false
+        prerelease: true
+        files: |
+          ./artifacts/windows-installer/Cordex_Setup.exe
+          ./artifacts/linux-package/Cordex-linux-x64.tar.gz
+
+    - name: Upload Combined Installer Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Cordex-Installer-${{ steps.tag_version.outputs.version }}
+        path: |
+          ./artifacts/windows-installer/Cordex_Setup.exe
+          ./artifacts/linux-package/Cordex-linux-x64.tar.gz
+        retention-days: 90

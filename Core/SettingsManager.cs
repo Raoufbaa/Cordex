@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 
-namespace Nextcord.Core;
+namespace Cordex.Core;
 
 public class HotkeyConfig
 {
@@ -22,7 +22,7 @@ public static class SettingsManager
 {
     private static readonly string _path = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Nextcord", "settings.json");
+        "Cordex", "settings.json");
 
     public static AppSettings Current { get; private set; } = Load();
 
