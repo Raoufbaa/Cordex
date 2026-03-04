@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
@@ -12,22 +13,29 @@
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
+    <NoWarn>NU1603;NU1701;NU1903</NoWarn>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <StartupObject>Nextcord.App</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="CefSharp.Wpf.NETCore" Version="120.1.90" />
-    <PackageReference Include="WPF-UI"               Version="4.0.0" />
+    <PackageReference Include="WPF-UI"               Version="4.0.0"    />
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Assets\app.ico"     Condition="Exists('Assets\app.ico')">
+    <Resource Include="Assets\app.ico" />
+    <Content Include="Assets\app.ico" Condition="Exists('Assets\app.ico')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Assets\muted.ico"   Condition="Exists('Assets\muted.ico')">
+    <Content Include="Assets\muted.ico" Condition="Exists('Assets\muted.ico')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Assets\unmuted.ico" Condition="Exists('Assets\unmuted.ico')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+
 </Project>

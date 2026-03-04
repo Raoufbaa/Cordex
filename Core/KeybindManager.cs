@@ -10,15 +10,10 @@ public class KeybindManager
     [DllImport("user32.dll")] private static extern bool RegisterHotKey  (IntPtr hWnd, int id, uint fsModifiers, uint vk);
     [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
-    private const int  WM_HOTKEY = 0x0312;
-    private const uint MOD_CTRL  = 0x0002;
-    private const uint MOD_SHIFT = 0x0004;
-    private const uint VK_M      = 0x4D;
-    private const uint VK_D      = 0x44;
-    private const uint VK_N      = 0x4E;
-    private const int  ID_MUTE   = 1;
-    private const int  ID_DEAFEN = 2;
-    private const int  ID_FOCUS  = 3;
+    private const int WM_HOTKEY  = 0x0312;
+    private const int ID_MUTE    = 1;
+    private const int ID_DEAFEN  = 2;
+    private const int ID_FOCUS   = 3;
 
     private IntPtr      _hwnd;
     private HwndSource? _source;
@@ -33,9 +28,10 @@ public class KeybindManager
         _source = HwndSource.FromHwnd(_hwnd);
         _source?.AddHook(WndProc);
 
-        RegisterHotKey(_hwnd, ID_MUTE,   MOD_CTRL | MOD_SHIFT, VK_M);
-        RegisterHotKey(_hwnd, ID_DEAFEN, MOD_CTRL | MOD_SHIFT, VK_D);
-        RegisterHotKey(_hwnd, ID_FOCUS,  MOD_CTRL | MOD_SHIFT, VK_N);
+        var s = SettingsManager.Current;
+        RegisterHotKey(_hwnd, ID_MUTE,   s.Mute.Modifiers,   s.Mute.VirtualKey);
+        RegisterHotKey(_hwnd, ID_DEAFEN, s.Deafen.Modifiers, s.Deafen.VirtualKey);
+        RegisterHotKey(_hwnd, ID_FOCUS,  s.Focus.Modifiers,  s.Focus.VirtualKey);
     }
 
     public void Unregister()
