@@ -71,10 +71,9 @@ jobs:
     - name: Create Versioned Release
       uses: softprops/action-gh-release@v2
       with:
-        repository: Raoufbaa/Cordex-Releases
-        token: ${{ secrets.RELEASES_PAT }}
         tag_name: ${{ steps.tag_version.outputs.version }}
         name: "Cordex ${{ steps.tag_version.outputs.version }}"
+        token: ${{ secrets.GITHUB_TOKEN }}
         body: |
           ## Cordex Release ${{ steps.tag_version.outputs.version }}
 
@@ -100,10 +99,9 @@ jobs:
     - name: Update Latest Release
       uses: softprops/action-gh-release@v2
       with:
-        repository: Raoufbaa/Cordex-Releases
-        token: ${{ secrets.RELEASES_PAT }}
         tag_name: latest
         name: "Latest Development Build"
+        token: ${{ secrets.GITHUB_TOKEN }}
         body: |
           ## ⚡ Latest Cordex Build
 
