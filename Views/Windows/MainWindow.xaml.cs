@@ -158,20 +158,15 @@ public partial class MainWindow : Window
         }
         catch { }
 
-        // Force taskbar presence by manipulating window visibility
-        ShowWindow(hwnd, SW_HIDE);
-        
-        // Set extended window style to force taskbar button
+        // Set extended window style to force taskbar button and app classification
         int exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-        exStyle |= WS_EX_APPWINDOW;   // Force taskbar button
+        exStyle |= WS_EX_APPWINDOW;   // Force taskbar button and Task Manager "Apps" classification
         exStyle &= ~WS_EX_TOOLWINDOW; // Remove tool window flag
         SetWindowLong(hwnd, GWL_EXSTYLE, exStyle);
         
         // Force window frame to update
         SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0, 
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
-        
-        ShowWindow(hwnd, SW_SHOW);
 
         // Windows 11 rounded corners
         int pref = DWMWCP_ROUND;

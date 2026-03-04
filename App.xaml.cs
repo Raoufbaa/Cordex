@@ -105,6 +105,17 @@ public partial class App : System.Windows.Application
     {
         try
         {
+            // Apply performance settings before starting main window
+            try
+            {
+                PerformanceManager.ApplyPerformanceSettings();
+            }
+            catch (Exception perfEx)
+            {
+                System.Diagnostics.Debug.WriteLine($"Performance settings failed: {perfEx.Message}");
+                // Continue anyway - don't let performance settings stop the app
+            }
+            
             var mainWindow = new MainWindow();
             
             // Check if should start minimized

@@ -26,9 +26,23 @@ public class AppSettings
     public bool StartMinimized        { get; set; } = false;
     public bool StartWithWindows      { get; set; } = false;
     
+    // General Settings
+    public string Language            { get; set; } = "English (US)";
+    public string Theme               { get; set; } = "Dark";
+    public int ZoomLevel              { get; set; } = 100;
+    public bool CheckUpdatesOnStartup { get; set; } = true;
+    public bool ConfirmOnExit         { get; set; } = false;
+    
     // Performance
     public bool HardwareAcceleration  { get; set; } = false;
     public bool ReducedMotion         { get; set; } = false;
+    public bool EnablePerformanceLimits { get; set; } = false;
+    public int  MaxCpuCores           { get; set; } = Environment.ProcessorCount;
+    public int  MaxRamMB              { get; set; } = 200;
+    public bool EnableCpuAffinity     { get; set; } = false;
+    public long CpuAffinityMask       { get; set; } = 0;
+    public bool LimitGpuUsage         { get; set; } = false;
+    public bool ReduceBackgroundActivity { get; set; } = false;
     
     // Voice & Audio
     public bool AutomaticallyMute     { get; set; } = false;
