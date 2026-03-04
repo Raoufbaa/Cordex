@@ -105,7 +105,18 @@ public partial class App : System.Windows.Application
     {
         try
         {
-            new MainWindow().Show();
+            var mainWindow = new MainWindow();
+            
+            // Check if should start minimized
+            if (SettingsManager.Current.StartMinimized)
+            {
+                mainWindow.Show();
+                mainWindow.Hide(); // Start hidden in tray
+            }
+            else
+            {
+                mainWindow.Show();
+            }
         }
         catch (Exception ex)
         {

@@ -11,7 +11,6 @@ public class AudioMonitor : IDisposable
     private IMMDevice? _device;
     private IAudioMeterInformation? _meterInfo;
     
-    private const float VoiceThreshold = 0.02f; // 2% threshold
     private const int CheckIntervalMs = 50;
     private const int TalkingDebounceMs = 200;
     
@@ -80,8 +79,11 @@ public class AudioMonitor : IDisposable
             
             if (hr != 0) return;
             
+            // Get threshold from settings (convert 0-100 to 0.0-1.0)
+            float threshold = SettingsManager.Current.VoiceActivityThreshold / 100f;
+            
             // Detect voice activity
-            if (peak > VoiceThreshold)
+            if (peak > threshold)
             {
                 _lastVoiceDetected = DateTime.Now;
                 

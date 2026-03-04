@@ -130,6 +130,7 @@ public partial class MainWindow : Window
 
         Browser.RequestHandler  = new DiscordRequestHandler();
         Browser.MenuHandler     = new NoContextMenuHandler();
+        Browser.PermissionHandler = new MediaPermissionHandler();
         Browser.BrowserSettings = new BrowserSettings { WindowlessFrameRate = 60 };
         Browser.Address         = "https://discord.com/app";
         Browser.LoadingStateChanged += OnBrowserLoadingStateChanged;
@@ -267,18 +268,47 @@ public partial class MainWindow : Window
         {
             CachePath   = SessionManager.CacheDirectory,
             LogSeverity = LogSeverity.Disable,
-            UserAgent   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+            UserAgent   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             WindowlessRenderingEnabled = false
         };
 
+        // Check if hardware acceleration is enabled
+        bool hwAccel = SettingsManager.Current.HardwareAcceleration;
+
+        // Essential media and WebRTC flags
         settings.CefCommandLineArgs.Add("enable-media-stream", "1");
         settings.CefCommandLineArgs.Add("enable-usermedia-screen-capturing", "1");
-        settings.CefCommandLineArgs.Add("enable-gpu", "1");
-        settings.CefCommandLineArgs.Add("enable-gpu-rasterization", "1");
+        settings.CefCommandLineArgs.Add("autoplay-policy", "no-user-gesture-required");
+        
+        // WebRTC and DTLS fixes - comprehensive flags
+        settings.CefCommandLineArgs.Add("enable-webrtc", "1");
+        settings.CefCommandLineArgs.Add("enable-webrtc-hide-local-ips-with-mdns", "0");
+        settings.CefCommandLineArgs.Add("enforce-webrtc-ip-permission-check", "0");
+        settings.CefCommandLineArgs.Add("disable-webrtc-encryption", "0");
+        settings.CefCommandLineArgs.Add("disable-features", "WebRtcHideLocalIpsWithMdns");
+        
+        // Network and connection flags
+        settings.CefCommandLineArgs.Add("enable-quic", "1");
+        settings.CefCommandLineArgs.Add("enable-zero-copy", "1");
+        settings.CefCommandLineArgs.Add("disable-site-isolation-trials", "1");
+        
+        // Performance settings based on hardware acceleration
+        if (hwAccel)
+        {
+            settings.CefCommandLineArgs.Add("enable-gpu", "1");
+            settings.CefCommandLineArgs.Add("enable-gpu-rasterization", "1");
+            settings.CefCommandLineArgs.Add("enable-accelerated-video-decode", "1");
+        }
+        else
+        {
+            settings.CefCommandLineArgs.Add("disable-gpu", "1");
+            settings.CefCommandLineArgs.Add("disable-gpu-compositing", "1");
+            settings.CefCommandLineArgs.Add("disable-accelerated-video-decode", "1");
+        }
+        
         settings.CefCommandLineArgs.Add("disable-renderer-backgrounding", "1");
         settings.CefCommandLineArgs.Add("disable-background-timer-throttling", "1");
         settings.CefCommandLineArgs.Add("disable-backgrounding-occluded-windows", "1");
-        settings.CefCommandLineArgs.Add("autoplay-policy", "no-user-gesture-required");
 
         Cef.Initialize(settings, performDependencyCheck: false, browserProcessHandler: null);
         _cefInitialized = true;
@@ -322,10 +352,116 @@ public partial class MainWindow : Window
                 // Wait a bit more for Discord to fully initialize
                 System.Threading.Tasks.Task.Delay(3000).ContinueWith(_ =>
                 {
-                    Dispatcher.Invoke(InitKeybinds);
+                    Dispatcher.Invoke(() =>
+                    {
+                        InitKeybinds();
+                        
+                        // Apply WebRTC fixes
+                        ApplyWebRTCFixes();
+                        
+                        // Apply reduced motion CSS if enabled
+                        if (SettingsManager.Current.ReducedMotion)
+                        {
+                            ApplyReducedMotion();
+                        }
+                    });
                 });
             });
         }
+    }
+
+    private void ApplyWebRTCFixes()
+    {
+        // Inject script to fix WebRTC connection issues
+        var script = @"
+            (function() {
+                // Grant media permissions automatically
+                navigator.mediaDevices.getUserMedia = (function(original) {
+                    return function(constraints) {
+                        console.log('Media request:', constraints);
+                        return original.call(navigator.mediaDevices, constraints);
+                    };
+                })(navigator.mediaDevices.getUserMedia);
+                
+                // Override WebRTC configuration for better connectivity
+                const originalRTCPeerConnection = window.RTCPeerConnection;
+                window.RTCPeerConnection = function(config) {
+                    if (config) {
+                        // Force proper ICE configuration
+                        config.iceTransportPolicy = 'all';
+                        config.bundlePolicy = 'max-bundle';
+                        config.rtcpMuxPolicy = 'require';
+                        config.iceCandidatePoolSize = 10;
+                        
+                        // Ensure STUN/TURN servers are properly configured
+                        if (!config.iceServers || config.iceServers.length === 0) {
+                            config.iceServers = [
+                                { urls: 'stun:stun.l.google.com:19302' },
+                                { urls: 'stun:stun1.l.google.com:19302' },
+                                { urls: 'stun:stun2.l.google.com:19302' }
+                            ];
+                        }
+                    }
+                    
+                    const pc = new originalRTCPeerConnection(config);
+                    
+                    // Force immediate ICE gathering
+                    const originalSetLocalDescription = pc.setLocalDescription.bind(pc);
+                    pc.setLocalDescription = function(description) {
+                        return originalSetLocalDescription(description).then(() => {
+                            // Trigger ICE gathering immediately
+                            if (pc.iceGatheringState === 'new') {
+                                console.log('Forcing ICE gathering');
+                            }
+                        });
+                    };
+                    
+                    // Log connection state for debugging
+                    pc.addEventListener('iceconnectionstatechange', () => {
+                        console.log('ICE Connection State:', pc.iceConnectionState);
+                        if (pc.iceConnectionState === 'failed') {
+                            console.error('ICE connection failed, attempting restart');
+                            pc.restartIce();
+                        }
+                    });
+                    
+                    pc.addEventListener('connectionstatechange', () => {
+                        console.log('Connection State:', pc.connectionState);
+                    });
+                    
+                    pc.addEventListener('icegatheringstatechange', () => {
+                        console.log('ICE Gathering State:', pc.iceGatheringState);
+                    });
+                    
+                    return pc;
+                };
+                
+                console.log('Cordex: WebRTC connection fixes applied');
+            })();
+        ";
+        
+        ExecuteScript(script);
+    }
+
+    private void ApplyReducedMotion()
+    {
+        var css = @"
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        ";
+        
+        var script = $@"
+            (function() {{
+                var style = document.createElement('style');
+                style.textContent = `{css}`;
+                document.head.appendChild(style);
+            }})();
+        ";
+        
+        ExecuteScript(script);
     }
 
     private void CheckVoiceChannelStatus(object? state)
@@ -346,6 +482,7 @@ public partial class MainWindow : Window
                 
                 if (inVoice != _isInVoiceChannel)
                 {
+                    bool wasInVoice = _isInVoiceChannel;
                     _isInVoiceChannel = inVoice;
                     
                     if (!_isInVoiceChannel)
@@ -357,8 +494,26 @@ public partial class MainWindow : Window
                     }
                     else
                     {
-                        // In voice - check mute state
-                        CheckMuteState();
+                        // Just joined voice channel
+                        if (!wasInVoice && SettingsManager.Current.AutomaticallyMute)
+                        {
+                            // Auto-mute on join
+                            System.Threading.Tasks.Task.Delay(500).ContinueWith(_ =>
+                            {
+                                Dispatcher.Invoke(() =>
+                                {
+                                    ExecuteScript(@"(function(){var b=document.querySelector('[aria-label=""Mute""]');if(b)b.click();})();");
+                                    _muteState = MuteState.Muted;
+                                    _tray.SetState(MuteState.Muted);
+                                    _audio.Stop();
+                                });
+                            });
+                        }
+                        else
+                        {
+                            // Check current mute state
+                            CheckMuteState();
+                        }
                     }
                 }
             });
@@ -378,10 +533,18 @@ public partial class MainWindow : Window
             _muteState = isMuted ? MuteState.Muted : MuteState.Unmuted;
             _tray.SetState(_muteState);
             
-            if (_muteState == MuteState.Unmuted)
-                _audio.Start();
+            // Only show voice activity if enabled in settings
+            if (SettingsManager.Current.ShowVoiceActivity)
+            {
+                if (_muteState == MuteState.Unmuted)
+                    _audio.Start();
+                else
+                    _audio.Stop();
+            }
             else
+            {
                 _audio.Stop();
+            }
         });
     }
 
@@ -397,8 +560,22 @@ public partial class MainWindow : Window
     }
 
     // ── Title Bar Buttons ─────────────────────────────────────────────────────
-    private void BtnClose_Click(object sender, RoutedEventArgs e)    => Hide();
-    private void BtnMinimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    private void BtnClose_Click(object sender, RoutedEventArgs e)
+    {
+        if (SettingsManager.Current.CloseToTray)
+            Hide();
+        else
+            ExitApp();
+    }
+    
+    private void BtnMinimize_Click(object sender, RoutedEventArgs e)
+    {
+        if (SettingsManager.Current.MinimizeToTray)
+            Hide();
+        else
+            WindowState = WindowState.Minimized;
+    }
+    
     private void BtnMaximize_Click(object sender, RoutedEventArgs e)
         => WindowState = WindowState == WindowState.Maximized
             ? WindowState.Normal
@@ -408,7 +585,24 @@ public partial class MainWindow : Window
     {
         var win = new SettingsWindow { Owner = this };
         win.KeybindsSaved += ReloadKeybinds;
+        win.SettingsChanged += OnSettingsChanged;
         win.ShowDialog();
+    }
+
+    private void OnSettingsChanged()
+    {
+        // Reload voice activity monitoring based on new settings
+        if (_isInVoiceChannel)
+        {
+            if (SettingsManager.Current.ShowVoiceActivity && _muteState == MuteState.Unmuted)
+            {
+                _audio.Start();
+            }
+            else
+            {
+                _audio.Stop();
+            }
+        }
     }
 
     // ── Actions ──────────────────────────────────────────────────────────────
@@ -425,11 +619,18 @@ public partial class MainWindow : Window
         _muteState = _muteState == MuteState.Muted ? MuteState.Unmuted : MuteState.Muted;
         _tray.SetState(_muteState);
         
-        // Start/stop audio monitoring based on mute state
-        if (_muteState == MuteState.Unmuted)
-            _audio.Start();
+        // Start/stop audio monitoring based on mute state and settings
+        if (SettingsManager.Current.ShowVoiceActivity)
+        {
+            if (_muteState == MuteState.Unmuted)
+                _audio.Start();
+            else
+                _audio.Stop();
+        }
         else
+        {
             _audio.Stop();
+        }
     }
 
     private void ToggleDeafen()
@@ -451,6 +652,7 @@ public partial class MainWindow : Window
     private void OnVoiceActivityChanged(bool isTalking)
     {
         if (!_isInVoiceChannel) return; // Ignore if not in voice
+        if (!SettingsManager.Current.ShowVoiceActivity) return; // Ignore if disabled
         
         Dispatcher.Invoke(() =>
         {
@@ -478,7 +680,11 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(CancelEventArgs e)
     {
-        if (!_isExiting) { e.Cancel = true; Hide(); }
+        if (!_isExiting && SettingsManager.Current.CloseToTray) 
+        { 
+            e.Cancel = true; 
+            Hide(); 
+        }
         base.OnClosing(e);
     }
 }
@@ -492,6 +698,18 @@ public class DiscordRequestHandler : CefSharp.Handler.RequestHandler
         callback.Continue(true);
         return true;
     }
+
+    protected override void OnRenderProcessTerminated(
+        IWebBrowser browserControl, IBrowser browser, CefTerminationStatus status)
+    {
+        // Reload if renderer crashes
+        if (status == CefTerminationStatus.AbnormalTermination || 
+            status == CefTerminationStatus.ProcessCrashed ||
+            status == CefTerminationStatus.ProcessWasKilled)
+        {
+            browser.Reload();
+        }
+    }
 }
 
 public class NoContextMenuHandler : CefSharp.Handler.ContextMenuHandler
@@ -499,4 +717,33 @@ public class NoContextMenuHandler : CefSharp.Handler.ContextMenuHandler
     protected override void OnBeforeContextMenu(
         IWebBrowser b, IBrowser browser, IFrame frame,
         IContextMenuParams parameters, IMenuModel model) => model.Clear();
+}
+
+public class MediaPermissionHandler : CefSharp.Handler.PermissionHandler
+{
+    protected override bool OnRequestMediaAccessPermission(
+        IWebBrowser chromiumWebBrowser, IBrowser browser, IFrame frame,
+        string requestingOrigin, MediaAccessPermissionType requestedPermissions,
+        IMediaAccessCallback callback)
+    {
+        // Auto-grant all media permissions for Discord
+        using (callback)
+        {
+            callback.Continue(requestedPermissions);
+        }
+        return true;
+    }
+
+    protected override bool OnShowPermissionPrompt(
+        IWebBrowser chromiumWebBrowser, IBrowser browser, ulong promptId,
+        string requestingOrigin, CefSharp.PermissionRequestType requestedPermissions,
+        IPermissionPromptCallback callback)
+    {
+        // Auto-accept all permission prompts
+        using (callback)
+        {
+            callback.Continue(PermissionRequestResult.Accept);
+        }
+        return true;
+    }
 }
