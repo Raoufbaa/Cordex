@@ -308,11 +308,11 @@
                                 <TextBlock Text="Cordex"
                                            FontSize="22" FontWeight="Bold"
                                            Foreground="White"/>
-                                <TextBlock Text="Version 1.0.0"
+                                <TextBlock x:Name="VersionTextBlock" Text="Version 1.1.3"
                                            Foreground="#80848E" FontSize="13"
                                            Margin="0,4,0,0"/>
                                 <Rectangle Height="1" Fill="#3A3C40" Margin="0,16"/>
-                                <TextBlock Text="A high-performance Discord client built with .NET 8, CefSharp Chromium, and WPF-UI."
+                                <TextBlock Text="A high-performance Discord client built with .NET 10, CefSharp Chromium, and WPF-UI."
                                            Foreground="#B5BAC1" FontSize="13"
                                            TextWrapping="Wrap"/>
                                 <Rectangle Height="1" Fill="#3A3C40" Margin="0,16"/>
@@ -322,12 +322,18 @@
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Framework:" Foreground="#80848E" FontSize="12" Width="80"/>
-                                    <TextBlock Text=".NET 8 / WPF"              Foreground="White" FontSize="12"/>
+                                    <TextBlock Text=".NET 10 / WPF"              Foreground="White" FontSize="12"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="UI Library:" Foreground="#80848E" FontSize="12" Width="80"/>
                                     <TextBlock Text="WPF-UI (Wpf.Ui)"           Foreground="White" FontSize="12"/>
                                 </StackPanel>
+                                <Rectangle Height="1" Fill="#3A3C40" Margin="0,16"/>
+                                <ui:Button x:Name="CheckUpdateButton" 
+                                          Content="Check for Updates" 
+                                          Appearance="Primary"
+                                          HorizontalAlignment="Left"
+                                          Click="CheckUpdateButton_Click"/>
                             </StackPanel>
                         </Border>
 

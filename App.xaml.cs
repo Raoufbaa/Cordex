@@ -1,5 +1,7 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
+using Cordex.Core;
 
 namespace Cordex;
 
@@ -45,6 +47,79 @@ public partial class App : System.Windows.Application
 
         base.OnStartup(e);
 
+        // Check for updates before starting the main window
+        CheckVersionAndStart();
+    }
+
+    private async void CheckVersionAndStart()
+    {
+        try
+        {
+            var versionResult = await VersionManager.CheckVersionAsync();
+
+            // Debug output
+            var debugInfo = $"Version Check Results:\n" +
+                          $"Current: {versionResult.CurrentVersion}\n" +
+                          $"Latest: {versionResult.LatestVersion}\n" +
+                          $"Disabled: {versionResult.IsDisabled}\n" +
+                          $"Supported: {versionResult.IsSupported}\n" +
+                          $"Update Available: {versionResult.UpdateAvailable}\n" +
+                          $"Message: {versionResult.Message}";
+            
+            System.Diagnostics.Debug.WriteLine(debugInfo);
+            
+            // Debug info - REMOVE AFTER TESTING
+            System.Windows.MessageBox.Show(debugInfo, "Debug - Version Check");
+
+            // Show update window if app is disabled
+            if (versionResult.IsDisabled)
+            {
+                var updateWindow = new UpdateWindow(versionResult);
+                updateWindow.ShowDialog();
+                Shutdown();
+                return;
+            }
+
+            // Show update window if version is not supported
+            if (!versionResult.IsSupported)
+            {
+                var updateWindow = new UpdateWindow(versionResult);
+                updateWindow.ShowDialog();
+                Shutdown();
+                return;
+            }
+
+            // Show update window if update is available (optional)
+            if (versionResult.UpdateAvailable)
+            {
+                var updateWindow = new UpdateWindow(versionResult);
+                updateWindow.ShowDialog();
+
+                // If user chose to update, the app will shutdown in UpdateWindow
+                if (updateWindow.ShouldUpdate)
+                {
+                    return;
+                }
+            }
+
+            // Start main window
+            StartMainWindow();
+        }
+        catch (Exception ex)
+        {
+            // If version check fails, show error and continue with app startup
+            System.Diagnostics.Debug.WriteLine($"Version check failed: {ex.Message}");
+            System.Windows.MessageBox.Show(
+                $"Failed to check for updates: {ex.Message}\n\nThe app will start normally.",
+                "Version Check Failed",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Warning);
+            StartMainWindow();
+        }
+    }
+
+    private void StartMainWindow()
+    {
         try
         {
             new MainWindow().Show();

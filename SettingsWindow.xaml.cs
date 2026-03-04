@@ -35,6 +35,9 @@ public partial class SettingsWindow : FluentWindow
         TbMute.Text   = _tempMute.Display;
         TbDeafen.Text = _tempDeafen.Display;
         TbFocus.Text  = _tempFocus.Display;
+
+        // Set version text
+        VersionTextBlock.Text = $"Version {VersionManager.GetCurrentVersion()}";
     }
 
     // ── Nav ───────────────────────────────────────────────────────────────────
@@ -149,6 +152,46 @@ public partial class SettingsWindow : FluentWindow
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => Close();
+
+    // ── Check for Updates ─────────────────────────────────────────────────────
+
+    private async void CheckUpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        CheckUpdateButton.IsEnabled = false;
+        CheckUpdateButton.Content = "Checking...";
+
+        try
+        {
+            var versionResult = await VersionManager.CheckVersionAsync();
+
+            if (versionResult.IsDisabled || !versionResult.IsSupported || versionResult.UpdateAvailable)
+            {
+                var updateWindow = new UpdateWindow(versionResult);
+                updateWindow.ShowDialog();
+            }
+            else
+            {
+                System.Windows.MessageBox.Show(
+                    "You are running the latest version of Cordex!",
+                    "No Updates Available",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Information);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(
+                $"Failed to check for updates: {ex.Message}",
+                "Update Check Failed",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
+        }
+        finally
+        {
+            CheckUpdateButton.IsEnabled = true;
+            CheckUpdateButton.Content = "Check for Updates";
+        }
+    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
