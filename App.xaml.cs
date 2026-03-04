@@ -86,6 +86,8 @@ public partial class App : System.Windows.Application
                 {
                     return;
                 }
+                
+                // User clicked "Later" - continue to main window
             }
 
             // Start main window

@@ -165,9 +165,15 @@ public partial class UpdateWindow : FluentWindow
 
     private void LaterButton_Click(object sender, RoutedEventArgs e)
     {
+        // Close app if disabled or unsupported
         if (_versionResult.IsDisabled || !_versionResult.IsSupported)
+        {
             System.Windows.Application.Current.Shutdown();
+        }
         else
+        {
+            // Allow user to continue using the app if version is supported
             Close();
+        }
     }
 }

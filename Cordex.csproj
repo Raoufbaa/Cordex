@@ -9,13 +9,11 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>Cordex</RootNamespace>
     <AssemblyTitle>Cordex</AssemblyTitle>
-    <Version>1.1.8</Version>
-    <AssemblyVersion>1.1.8.0</AssemblyVersion>
-    <FileVersion>1.1.8.0</FileVersion>
+    <Version>1.2.0</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <EnableWindowsTargeting>true</EnableWindowsTargeting>  <!-- fixes Linux runner build error -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>false</PublishSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
@@ -35,16 +33,16 @@
 
   <ItemGroup>
     <Resource Include="Assets\app.ico" />
-    <Content Include="Assets\app.ico" Condition="Exists('Assets\app.ico')">
+    <Content Include="Assets\app.ico"      Condition="Exists('Assets\app.ico')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Assets\muted.ico" Condition="Exists('Assets\muted.ico')">
+    <Content Include="Assets\muted.ico"    Condition="Exists('Assets\muted.ico')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Assets\unmuted.ico" Condition="Exists('Assets\unmuted.ico')">
+    <Content Include="Assets\unmuted.ico"  Condition="Exists('Assets\unmuted.ico')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Assets\talking.ico" Condition="Exists('Assets\talking.ico')">
+    <Content Include="Assets\talking.ico"  Condition="Exists('Assets\talking.ico')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
