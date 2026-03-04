@@ -34,7 +34,7 @@ jobs:
       continue-on-error: true
 
     - name: Publish
-      run: dotnet publish --configuration Release --runtime win-x64 --self-contained true -p:PublishTrimmed=false --output ./publish
+      run: dotnet publish Cordex.csproj -c Release -r win-x64 --self-contained true -p:PublishTrimmed=false --output ./publish
 
     - name: Compile Inno Setup Script
       uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
@@ -90,7 +90,7 @@ jobs:
 
           ### System Requirements
           - Windows 10 or later (x64)
-          - .NET 10 Runtime (self-contained, no install required)
+          - No additional dependencies required (self-contained)
           - 4GB RAM minimum
         draft: false
         prerelease: false
