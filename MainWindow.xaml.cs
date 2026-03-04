@@ -13,10 +13,14 @@ public partial class MainWindow : Window
 {
     private readonly TrayManager    _tray = new();
     private readonly KeybindManager _keys = new();
+    private readonly AudioMonitor   _audio = new();
 
     private static bool _cefInitialized;
     private MuteState   _muteState = MuteState.Default;
     private bool        _isExiting = false;
+    private bool        _isInVoiceChannel = false;
+    private bool        _discordLoaded = false;
+    private System.Threading.Timer? _voiceCheckTimer;
     
     // Keep icon handles alive
     private System.Drawing.Icon? _bigIcon;
@@ -128,6 +132,7 @@ public partial class MainWindow : Window
         Browser.MenuHandler     = new NoContextMenuHandler();
         Browser.BrowserSettings = new BrowserSettings { WindowlessFrameRate = 60 };
         Browser.Address         = "https://discord.com/app";
+        Browser.LoadingStateChanged += OnBrowserLoadingStateChanged;
 
         Loaded            += OnWindowLoaded;
         SourceInitialized += OnSourceInitialized;
@@ -283,7 +288,10 @@ public partial class MainWindow : Window
     private void OnWindowLoaded(object sender, RoutedEventArgs e)
     {
         InitTray();
-        InitKeybinds();
+        // Don't init keybinds yet - wait for Discord to load
+        
+        // Start checking for voice channel connection
+        _voiceCheckTimer = new System.Threading.Timer(CheckVoiceChannelStatus, null, 2000, 2000);
     }
 
     private void InitTray()
@@ -292,6 +300,8 @@ public partial class MainWindow : Window
         _tray.OpenRequested += ShowApp;
         _tray.MuteToggled   += ToggleMute;
         _tray.ExitRequested += ExitApp;
+        
+        _audio.VoiceActivityChanged += OnVoiceActivityChanged;
     }
 
     private void InitKeybinds()
@@ -300,6 +310,90 @@ public partial class MainWindow : Window
         _keys.ToggleMute   += ToggleMute;
         _keys.ToggleDeafen += ToggleDeafen;
         _keys.FocusWindow  += ShowApp;
+    }
+
+    private void OnBrowserLoadingStateChanged(object? sender, LoadingStateChangedEventArgs e)
+    {
+        if (!e.IsLoading && !_discordLoaded)
+        {
+            _discordLoaded = true;
+            Dispatcher.Invoke(() =>
+            {
+                // Wait a bit more for Discord to fully initialize
+                System.Threading.Tasks.Task.Delay(3000).ContinueWith(_ =>
+                {
+                    Dispatcher.Invoke(InitKeybinds);
+                });
+            });
+        }
+    }
+
+    private void CheckVoiceChannelStatus(object? state)
+    {
+        if (!_discordLoaded) return;
+
+        Dispatcher.Invoke(() =>
+        {
+            ExecuteScriptAsync(@"
+                (function() {
+                    const voicePanel = document.querySelector('[class*=""panels""] [class*=""container""]');
+                    const voiceButtons = document.querySelectorAll('[aria-label=""Disconnect""], [aria-label=""Mute""], [aria-label=""Unmute""]');
+                    return voiceButtons.length > 0;
+                })();
+            ", (result) =>
+            {
+                bool inVoice = result is bool b && b;
+                
+                if (inVoice != _isInVoiceChannel)
+                {
+                    _isInVoiceChannel = inVoice;
+                    
+                    if (!_isInVoiceChannel)
+                    {
+                        // Not in voice - show default icon and stop audio monitoring
+                        _muteState = MuteState.Default;
+                        _tray.SetState(MuteState.Default);
+                        _audio.Stop();
+                    }
+                    else
+                    {
+                        // In voice - check mute state
+                        CheckMuteState();
+                    }
+                }
+            });
+        });
+    }
+
+    private void CheckMuteState()
+    {
+        ExecuteScriptAsync(@"
+            (function() {
+                const muteBtn = document.querySelector('[aria-label=""Unmute""]');
+                return muteBtn !== null;
+            })();
+        ", (result) =>
+        {
+            bool isMuted = result is bool b && b;
+            _muteState = isMuted ? MuteState.Muted : MuteState.Unmuted;
+            _tray.SetState(_muteState);
+            
+            if (_muteState == MuteState.Unmuted)
+                _audio.Start();
+            else
+                _audio.Stop();
+        });
+    }
+
+    private void ExecuteScriptAsync(string script, Action<object?> callback)
+    {
+        Browser.GetMainFrame()?.EvaluateScriptAsync(script).ContinueWith(task =>
+        {
+            if (task.IsCompleted && task.Result.Success)
+            {
+                Dispatcher.Invoke(() => callback(task.Result.Result));
+            }
+        });
     }
 
     // ── Title Bar Buttons ─────────────────────────────────────────────────────
@@ -325,9 +419,17 @@ public partial class MainWindow : Window
 
     private void ToggleMute()
     {
+        if (!_isInVoiceChannel) return; // Don't toggle if not in voice
+        
         ExecuteScript(@"(function(){var b=document.querySelector('[aria-label=""Mute""],[aria-label=""Unmute""]');if(b)b.click();})();");
         _muteState = _muteState == MuteState.Muted ? MuteState.Unmuted : MuteState.Muted;
         _tray.SetState(_muteState);
+        
+        // Start/stop audio monitoring based on mute state
+        if (_muteState == MuteState.Unmuted)
+            _audio.Start();
+        else
+            _audio.Stop();
     }
 
     private void ToggleDeafen()
@@ -346,9 +448,25 @@ public partial class MainWindow : Window
 
     private void ReloadKeybinds() { _keys.Unregister(); _keys.Register(this); }
 
+    private void OnVoiceActivityChanged(bool isTalking)
+    {
+        if (!_isInVoiceChannel) return; // Ignore if not in voice
+        
+        Dispatcher.Invoke(() =>
+        {
+            if (_muteState == MuteState.Unmuted || _muteState == MuteState.Talking)
+            {
+                _muteState = isTalking ? MuteState.Talking : MuteState.Unmuted;
+                _tray.SetState(_muteState);
+            }
+        });
+    }
+
     private void ExitApp()
     {
         _isExiting = true;
+        _voiceCheckTimer?.Dispose();
+        _audio.Dispose();
         _keys.Unregister();
         _tray.Dispose();
         _bigIcon?.Dispose();
