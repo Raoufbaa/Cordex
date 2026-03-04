@@ -34,7 +34,7 @@ jobs:
       continue-on-error: true
 
     - name: Publish
-      run: dotnet publish --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false --output ./publish
+      run: dotnet publish --configuration Release --runtime win-x64 --self-contained true -p:PublishTrimmed=false --output ./publish
 
     - name: Compile Inno Setup Script
       uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
