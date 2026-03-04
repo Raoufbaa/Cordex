@@ -275,17 +275,10 @@ public partial class MainWindow : Window
         settings.CefCommandLineArgs.Add("enable-usermedia-screen-capturing", "1");
         settings.CefCommandLineArgs.Add("autoplay-policy", "no-user-gesture-required");
         
-        // WebRTC and DTLS fixes - comprehensive flags
-        settings.CefCommandLineArgs.Add("enable-webrtc", "1");
-        settings.CefCommandLineArgs.Add("enable-webrtc-hide-local-ips-with-mdns", "0");
+        // Essential Discord WebRTC routing flags for DTLS connection
         settings.CefCommandLineArgs.Add("enforce-webrtc-ip-permission-check", "0");
-        settings.CefCommandLineArgs.Add("disable-webrtc-encryption", "0");
-        settings.CefCommandLineArgs.Add("disable-features", "WebRtcHideLocalIpsWithMdns");
-        
-        // Network and connection flags
-        settings.CefCommandLineArgs.Add("enable-quic", "1");
-        settings.CefCommandLineArgs.Add("enable-zero-copy", "1");
-        settings.CefCommandLineArgs.Add("disable-site-isolation-trials", "1");
+        settings.CefCommandLineArgs.Add("webrtc.ip_handling_policy", "all_interfaces");
+        settings.CefCommandLineArgs.Add("webrtc.multiple_routes_enabled", "1");
         
         // Performance settings based on hardware acceleration
         if (hwAccel)
@@ -351,9 +344,6 @@ public partial class MainWindow : Window
                     {
                         InitKeybinds();
                         
-                        // Apply WebRTC fixes
-                        ApplyWebRTCFixes();
-                        
                         // Apply reduced motion CSS if enabled
                         if (SettingsManager.Current.ReducedMotion)
                         {
@@ -363,79 +353,6 @@ public partial class MainWindow : Window
                 });
             });
         }
-    }
-
-    private void ApplyWebRTCFixes()
-    {
-        // Inject script to fix WebRTC connection issues
-        var script = @"
-            (function() {
-                // Grant media permissions automatically
-                navigator.mediaDevices.getUserMedia = (function(original) {
-                    return function(constraints) {
-                        console.log('Media request:', constraints);
-                        return original.call(navigator.mediaDevices, constraints);
-                    };
-                })(navigator.mediaDevices.getUserMedia);
-                
-                // Override WebRTC configuration for better connectivity
-                const originalRTCPeerConnection = window.RTCPeerConnection;
-                window.RTCPeerConnection = function(config) {
-                    if (config) {
-                        // Force proper ICE configuration
-                        config.iceTransportPolicy = 'all';
-                        config.bundlePolicy = 'max-bundle';
-                        config.rtcpMuxPolicy = 'require';
-                        config.iceCandidatePoolSize = 10;
-                        
-                        // Ensure STUN/TURN servers are properly configured
-                        if (!config.iceServers || config.iceServers.length === 0) {
-                            config.iceServers = [
-                                { urls: 'stun:stun.l.google.com:19302' },
-                                { urls: 'stun:stun1.l.google.com:19302' },
-                                { urls: 'stun:stun2.l.google.com:19302' }
-                            ];
-                        }
-                    }
-                    
-                    const pc = new originalRTCPeerConnection(config);
-                    
-                    // Force immediate ICE gathering
-                    const originalSetLocalDescription = pc.setLocalDescription.bind(pc);
-                    pc.setLocalDescription = function(description) {
-                        return originalSetLocalDescription(description).then(() => {
-                            // Trigger ICE gathering immediately
-                            if (pc.iceGatheringState === 'new') {
-                                console.log('Forcing ICE gathering');
-                            }
-                        });
-                    };
-                    
-                    // Log connection state for debugging
-                    pc.addEventListener('iceconnectionstatechange', () => {
-                        console.log('ICE Connection State:', pc.iceConnectionState);
-                        if (pc.iceConnectionState === 'failed') {
-                            console.error('ICE connection failed, attempting restart');
-                            pc.restartIce();
-                        }
-                    });
-                    
-                    pc.addEventListener('connectionstatechange', () => {
-                        console.log('Connection State:', pc.connectionState);
-                    });
-                    
-                    pc.addEventListener('icegatheringstatechange', () => {
-                        console.log('ICE Gathering State:', pc.iceGatheringState);
-                    });
-                    
-                    return pc;
-                };
-                
-                console.log('Cordex: WebRTC connection fixes applied');
-            })();
-        ";
-        
-        ExecuteScript(script);
     }
 
     private void ApplyReducedMotion()
