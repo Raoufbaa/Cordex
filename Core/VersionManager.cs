@@ -89,22 +89,38 @@ public static class VersionManager
                 result.IsSupported = false;
                 result.Message = "This version is no longer supported. Please update to the latest version.";
                 result.DownloadUrl = versionInfo.DownloadUrl;
-                result.ReleaseNotes = versionInfo.ReleaseNotes;
+                
+                // Try to get release notes from GitHub
+                var latestVersion = await GetLatestVersionAsync();
+                if (!string.IsNullOrEmpty(latestVersion))
+                {
+                    result.LatestVersion = latestVersion;
+                    var releaseNotes = await GetReleaseNotesAsync(latestVersion);
+                    result.ReleaseNotes = !string.IsNullOrEmpty(releaseNotes) ? releaseNotes : versionInfo.ReleaseNotes;
+                }
+                else
+                {
+                    result.ReleaseNotes = versionInfo.ReleaseNotes;
+                }
+                
                 return result;
             }
 
             // Check for updates
-            var latestVersion = await GetLatestVersionAsync();
-            if (!string.IsNullOrEmpty(latestVersion))
+            var latestVer = await GetLatestVersionAsync();
+            if (!string.IsNullOrEmpty(latestVer))
             {
-                result.LatestVersion = latestVersion;
+                result.LatestVersion = latestVer;
                 
-                if (CompareVersions(currentVersion, latestVersion) < 0)
+                if (CompareVersions(currentVersion, latestVer) < 0)
                 {
                     result.UpdateAvailable = true;
-                    result.Message = $"A new version ({latestVersion}) is available!";
+                    result.Message = $"A new version ({latestVer}) is available!";
                     result.DownloadUrl = versionInfo.DownloadUrl;
-                    result.ReleaseNotes = versionInfo.ReleaseNotes;
+                    
+                    // Get release notes from GitHub
+                    var releaseNotes = await GetReleaseNotesAsync(latestVer);
+                    result.ReleaseNotes = !string.IsNullOrEmpty(releaseNotes) ? releaseNotes : versionInfo.ReleaseNotes;
                 }
             }
         }
@@ -141,6 +157,42 @@ public static class VersionManager
         return "";
     }
 
+    private static async Task<string> GetReleaseNotesAsync(string version)
+    {
+        try
+        {
+            // Try GitHub API first
+            var apiUrl = $"https://api.github.com/repos/Raoufbaa/Cordex/releases/tags/v{version}";
+            var request = new HttpRequestMessage(HttpMethod.Get, apiUrl);
+            request.Headers.Add("User-Agent", "Cordex");
+            request.Headers.Add("Accept", "application/vnd.github.v3+json");
+            
+            var response = await _httpClient.SendAsync(request);
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                var jsonDoc = JsonSerializer.Deserialize<JsonElement>(content);
+                
+                if (jsonDoc.TryGetProperty("body", out var bodyElement))
+                {
+                    var body = bodyElement.GetString() ?? "";
+                    if (!string.IsNullOrWhiteSpace(body))
+                    {
+                        // Clean up markdown formatting for display
+                        body = body.Replace("## ", "").Replace("### ", "").Replace("**", "");
+                        return body.Trim();
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors
+        }
+
+        return "";
+    }
+
     private static int CompareVersions(string version1, string version2)
     {
         var v1Parts = version1.Split('.').Select(int.Parse).ToArray();
@@ -169,28 +221,87 @@ public static class VersionManager
             var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
             var finalUrl = response.RequestMessage?.RequestUri?.ToString() ?? "";
 
-            // Find the installer asset URL
-            var pageContent = await _httpClient.GetStringAsync(finalUrl);
-            var installerMatch = Regex.Match(pageContent, @"href=""([^""]+CordexSetup\.exe)""");
-            
-            string installerUrl;
-            if (installerMatch.Success)
+            // Extract version from URL
+            var versionMatch = Regex.Match(finalUrl, @"/tag/v?(\d+\.\d+\.\d+)");
+            if (!versionMatch.Success)
             {
-                installerUrl = installerMatch.Groups[1].Value;
-                if (!installerUrl.StartsWith("http"))
+                return false;
+            }
+
+            var version = versionMatch.Groups[1].Value;
+
+            // Try multiple possible installer names
+            var possibleInstallerNames = new[]
+            {
+                "Cordex_Setup.exe",
+                "CordexSetup.exe",
+                $"Cordex_Setup-{version}.exe",
+                $"Cordex-Setup-{version}.exe",
+                $"CordexSetup-{version}.exe",
+                "Cordex-Setup.exe"
+            };
+
+            string? installerUrl = null;
+
+            // First, try to find the installer in the release page
+            try
+            {
+                var pageContent = await _httpClient.GetStringAsync(finalUrl);
+                
+                foreach (var installerName in possibleInstallerNames)
                 {
-                    installerUrl = "https://github.com" + installerUrl;
+                    var pattern = $@"href=""([^""]+{Regex.Escape(installerName)})""";
+                    var installerMatch = Regex.Match(pageContent, pattern);
+                    
+                    if (installerMatch.Success)
+                    {
+                        installerUrl = installerMatch.Groups[1].Value;
+                        if (!installerUrl.StartsWith("http"))
+                        {
+                            installerUrl = "https://github.com" + installerUrl;
+                        }
+                        break;
+                    }
                 }
             }
-            else
+            catch
             {
-                // Fallback: construct expected URL
-                var versionMatch = Regex.Match(finalUrl, @"/tag/v?(\d+\.\d+\.\d+)");
-                if (!versionMatch.Success) return false;
-                
-                var version = versionMatch.Groups[1].Value;
-                installerUrl = $"https://github.com/Raoufbaa/Cordex/releases/download/v{version}/CordexSetup.exe";
+                // Ignore page parsing errors
             }
+
+            // If not found, try direct URLs
+            if (string.IsNullOrEmpty(installerUrl))
+            {
+                foreach (var installerName in possibleInstallerNames)
+                {
+                    var testUrl = $"https://github.com/Raoufbaa/Cordex/releases/download/v{version}/{installerName}";
+                    
+                    try
+                    {
+                        var headRequest = new HttpRequestMessage(HttpMethod.Head, testUrl);
+                        headRequest.Headers.Add("User-Agent", "Cordex");
+                        var headResponse = await _httpClient.SendAsync(headRequest);
+                        
+                        if (headResponse.IsSuccessStatusCode)
+                        {
+                            installerUrl = testUrl;
+                            break;
+                        }
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+                }
+            }
+
+            if (string.IsNullOrEmpty(installerUrl))
+            {
+                return false;
+            }
+
+            // Report initial progress
+            progressCallback?.Invoke(0);
 
             // Download installer
             var tempPath = Path.Combine(Path.GetTempPath(), "CordexSetup.exe");
@@ -206,6 +317,7 @@ public static class VersionManager
                 var buffer = new byte[8192];
                 long totalRead = 0;
                 int bytesRead;
+                int lastReportedProgress = 0;
 
                 while ((bytesRead = await contentStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
                 {
@@ -215,9 +327,23 @@ public static class VersionManager
                     if (totalBytes > 0)
                     {
                         var progress = (int)((totalRead * 100) / totalBytes);
-                        progressCallback?.Invoke(progress);
+                        
+                        // Only report if progress changed by at least 1%
+                        if (progress != lastReportedProgress)
+                        {
+                            lastReportedProgress = progress;
+                            progressCallback?.Invoke(progress);
+                        }
+                    }
+                    else
+                    {
+                        // If we don't know total size, report indeterminate progress
+                        progressCallback?.Invoke(-1);
                     }
                 }
+                
+                // Ensure we report 100% at the end
+                progressCallback?.Invoke(100);
             }
 
             // Launch installer and exit

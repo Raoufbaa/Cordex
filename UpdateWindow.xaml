@@ -5,82 +5,118 @@
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Title="Cordex Update"
     Width="500"
-    Height="350"
+    Height="480"
     WindowStartupLocation="CenterScreen"
     ResizeMode="NoResize"
     Background="#1E1F22"
     ExtendsContentIntoTitleBar="True"
     WindowBackdropType="Mica">
-
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-
-        <!-- Title Bar -->
         <ui:TitleBar Grid.Row="0" Title="Cordex Update" />
-
-        <!-- Content -->
-        <StackPanel Grid.Row="1" Margin="30,20,30,20">
-            
-            <!-- Icon -->
-            <ui:SymbolIcon x:Name="IconSymbol" Symbol="ArrowDownload24" 
-                          FontSize="48" Foreground="#00B0F4" 
-                          HorizontalAlignment="Center" Margin="0,0,0,20"/>
-
-            <!-- Title -->
-            <TextBlock x:Name="TitleText" Text="Update Available" 
-                      FontSize="24" FontWeight="SemiBold" 
-                      Foreground="White" TextAlignment="Center" 
-                      Margin="0,0,0,10"/>
-
-            <!-- Version Info -->
-            <TextBlock x:Name="VersionText" Text="Version 1.1.6 is now available" 
-                      FontSize="14" Foreground="#B5BAC1" 
-                      TextAlignment="Center" Margin="0,0,0,20"/>
-
-            <!-- Release Notes -->
-            <Border Background="#2B2D31" CornerRadius="8" Padding="15" 
-                   Margin="0,0,0,20">
+        <StackPanel Grid.Row="1" Margin="30,5,30,20">
+            <ui:SymbolIcon x:Name="IconSymbol" Symbol="ArrowDownload24"
+                           FontSize="42" Foreground="#00B0F4"
+                           HorizontalAlignment="Center" Margin="0,0,0,8"/>
+            <TextBlock x:Name="TitleText" Text="Update Available"
+                       FontSize="22" FontWeight="SemiBold"
+                       Foreground="White" TextAlignment="Center"
+                       Margin="0,0,0,4"/>
+            <TextBlock x:Name="VersionText" Text="Version 1.1.6 is now available"
+                       FontSize="13" Foreground="#B5BAC1"
+                       TextAlignment="Center" Margin="0,0,0,20"/>
+            <Border Background="#2B2D31" CornerRadius="8" Padding="15" Margin="0,0,0,15">
                 <StackPanel>
-                    <TextBlock Text="What's New:" FontSize="12" 
-                              FontWeight="SemiBold" Foreground="White" 
-                              Margin="0,0,0,8"/>
+                    <TextBlock Text="What&apos;s New:" FontSize="12"
+                               FontWeight="SemiBold" Foreground="White"
+                               Margin="0,0,0,8"/>
                     <ScrollViewer MaxHeight="100" VerticalScrollBarVisibility="Auto">
-                        <TextBlock x:Name="ReleaseNotesText" 
-                                  Text="Bug fixes and improvements" 
-                                  FontSize="12" Foreground="#B5BAC1" 
-                                  TextWrapping="Wrap"/>
+                        <TextBlock x:Name="ReleaseNotesText"
+                                   Text="Bug fixes and improvements"
+                                   FontSize="12" Foreground="#B5BAC1"
+                                   TextWrapping="Wrap"/>
                     </ScrollViewer>
                 </StackPanel>
             </Border>
-
-            <!-- Progress Bar (Hidden by default) -->
-            <StackPanel x:Name="ProgressPanel" Visibility="Collapsed" Margin="0,0,0,10">
-                <TextBlock x:Name="ProgressText" Text="Downloading update..." 
-                          FontSize="12" Foreground="#B5BAC1" 
-                          Margin="0,0,0,5"/>
-                <ProgressBar x:Name="ProgressBar" Height="6" 
-                            Background="#2B2D31" Foreground="#00B0F4" 
-                            Minimum="0" Maximum="100" Value="0"/>
-            </StackPanel>
-
         </StackPanel>
-
-        <!-- Buttons -->
-        <Grid Grid.Row="2" Background="#2B2D31" Height="70">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" 
-                       VerticalAlignment="Center">
-                <ui:Button x:Name="UpdateButton" Content="Update Now" 
-                          Appearance="Primary" 
-                          Width="140" Height="40" Margin="0,0,10,0"
-                          Click="UpdateButton_Click"/>
-                <ui:Button x:Name="LaterButton" Content="Later" 
-                          Appearance="Secondary" 
-                          Width="140" Height="40"
-                          Click="LaterButton_Click"/>
+        <Grid Grid.Row="2" Background="#2B2D31">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="70"/>
+            </Grid.RowDefinitions>
+            <Border Grid.Row="0" x:Name="ProgressPanel" Visibility="Collapsed" Height="5">
+                <ProgressBar x:Name="ProgressBar"
+                             Height="5"
+                             Background="#161719"
+                             Foreground="#00B0F4"
+                             BorderThickness="0"
+                             Minimum="0" Maximum="100" Value="0"
+                             IsIndeterminate="False">
+                    <ProgressBar.Template>
+                        <ControlTemplate TargetType="ProgressBar">
+                            <Grid x:Name="PART_Track">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Determinate"/>
+                                        <VisualState x:Name="Indeterminate">
+                                            <Storyboard RepeatBehavior="Forever">
+                                                <DoubleAnimation
+                                                    Storyboard.TargetName="IndeterminateBlock"
+                                                    Storyboard.TargetProperty="(Canvas.Left)"
+                                                    From="-150" To="500"
+                                                    Duration="0:0:1.2"/>
+                                            </Storyboard>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <Border Background="{TemplateBinding Background}" CornerRadius="0"/>
+                                <Border x:Name="PART_Indicator"
+                                        HorizontalAlignment="Left"
+                                        Width="0"
+                                        Background="{TemplateBinding Foreground}"
+                                        CornerRadius="0"/>
+                                <Canvas ClipToBounds="True">
+                                    <Border x:Name="IndeterminateBlock"
+                                            Width="150" Height="5"
+                                            Background="{TemplateBinding Foreground}"
+                                            CornerRadius="0"
+                                            Canvas.Left="-150"/>
+                                </Canvas>
+                            </Grid>
+                        </ControlTemplate>
+                    </ProgressBar.Template>
+                </ProgressBar>
+            </Border>
+            <StackPanel Grid.Row="1" x:Name="ProgressLabelPanel"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        Visibility="Collapsed"
+                        Margin="0,10,0,0">
+                <TextBlock x:Name="ProgressLabel"
+                           Text="Downloading update  "
+                           FontSize="12" Foreground="#B5BAC1"
+                           VerticalAlignment="Center"/>
+                <TextBlock x:Name="ProgressText" Text="0%"
+                           FontSize="12" Foreground="#00B0F4"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+            <StackPanel Grid.Row="2" Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
+                <ui:Button x:Name="UpdateButton" Content="Update Now"
+                           Appearance="Primary"
+                           Width="140" Height="40" Margin="0,0,10,0"
+                           Click="UpdateButton_Click"/>
+                <ui:Button x:Name="LaterButton" Content="Later"
+                           Appearance="Secondary"
+                           Width="140" Height="40"
+                           Click="LaterButton_Click"/>
             </StackPanel>
         </Grid>
     </Grid>

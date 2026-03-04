@@ -57,20 +57,6 @@ public partial class App : System.Windows.Application
         {
             var versionResult = await VersionManager.CheckVersionAsync();
 
-            // Debug output
-            var debugInfo = $"Version Check Results:\n" +
-                          $"Current: {versionResult.CurrentVersion}\n" +
-                          $"Latest: {versionResult.LatestVersion}\n" +
-                          $"Disabled: {versionResult.IsDisabled}\n" +
-                          $"Supported: {versionResult.IsSupported}\n" +
-                          $"Update Available: {versionResult.UpdateAvailable}\n" +
-                          $"Message: {versionResult.Message}";
-            
-            System.Diagnostics.Debug.WriteLine(debugInfo);
-            
-            // Debug info - REMOVE AFTER TESTING
-            System.Windows.MessageBox.Show(debugInfo, "Debug - Version Check");
-
             // Show update window if app is disabled
             if (versionResult.IsDisabled)
             {
@@ -107,13 +93,8 @@ public partial class App : System.Windows.Application
         }
         catch (Exception ex)
         {
-            // If version check fails, show error and continue with app startup
+            // If version check fails, continue with app startup
             System.Diagnostics.Debug.WriteLine($"Version check failed: {ex.Message}");
-            System.Windows.MessageBox.Show(
-                $"Failed to check for updates: {ex.Message}\n\nThe app will start normally.",
-                "Version Check Failed",
-                System.Windows.MessageBoxButton.OK,
-                System.Windows.MessageBoxImage.Warning);
             StartMainWindow();
         }
     }
