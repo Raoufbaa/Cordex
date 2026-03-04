@@ -24,7 +24,6 @@ body {
   line-height: 1.6;
 }
 
-/* Animated Background with Gradient Orbs */
 .background-grid {
   position: fixed;
   top: 0;
@@ -71,16 +70,9 @@ body {
 }
 
 @keyframes float {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
-  33% {
-    transform: translate(30px, -30px) scale(1.1);
-  }
-  66% {
-    transform: translate(-20px, 20px) scale(0.9);
-  }
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -30px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.9); }
 }
 
 .grid-squares {
@@ -173,6 +165,7 @@ body {
   background: rgba(255, 255, 255, 0.15);
 }
 
+/* Hero — stacked layout */
 .hero {
   padding: 100px 0 80px;
   position: relative;
@@ -180,9 +173,9 @@ body {
 
 .hero-layout {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 80px;
+  gap: 56px;
   opacity: 0;
   transform: translateY(30px);
   animation: fadeInUp 1s ease forwards;
@@ -196,9 +189,9 @@ body {
 }
 
 .hero-content {
-  flex: 1;
   width: 100%;
-  max-width: 700px;
+  max-width: 820px;
+  text-align: center;
 }
 
 .hero h1 {
@@ -215,7 +208,7 @@ body {
   color: var(--textSec);
   margin-bottom: 40px;
   line-height: 1.7;
-  text-align: justify;
+  text-align: center;
 }
 
 .hero-actions {
@@ -223,7 +216,7 @@ body {
   flex-direction: column;
   width: 100%;
   gap: 24px;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .button-row {
@@ -231,6 +224,7 @@ body {
   gap: 10px;
   align-items: center;
   width: 100%;
+  max-width: 700px;
 }
 
 .fancy {
@@ -240,7 +234,6 @@ body {
   background: #00272c;
   border: 3px solid #003b45;
   height: 60px;
-  width: 100%;
   border-radius: 3px;
   border-bottom-right-radius: 10px;
   box-sizing: border-box;
@@ -252,7 +245,6 @@ body {
   outline: none;
   overflow: visible;
   padding: 15px 20px 15px 15px;
-  width: 60%;
   position: relative;
   text-align: center;
   text-decoration: none;
@@ -340,7 +332,8 @@ body {
   border: 3px solid var(--border);
   border-top-right-radius: 15px;
   border-bottom-left-radius: 15px;
-  background: var(--card);
+  background: rgba(0, 255, 234, 0.2);
+  border-color: rgba(0, 255, 234, 0.4);
 }
 
 .fancy:hover::before {
@@ -351,11 +344,6 @@ body {
 .fancy:hover .text {
   color: white;
   padding-left: 1.5em;
-}
-
-.fancy:hover {
-  background: rgba(0, 255, 234, 0.2);
-  border-color: rgba(0, 255, 234, 0.4);
 }
 
 .fancy:hover .topKey {
@@ -387,7 +375,9 @@ body {
   padding: 24px 28px;
   backdrop-filter: blur(20px);
   width: 100%;
+  max-width: 700px;
   transition: all 0.3s ease;
+  text-align: left;
 }
 
 .contact-box:hover {
@@ -424,8 +414,10 @@ body {
   width: 16px;
   height: 16px;
   fill: var(--mainLight);
+  flex-shrink: 0;
 }
 
+/* Hero image — wide 16/9 */
 .hero-image-container {
   background: var(--card);
   border: 2px solid var(--border);
@@ -436,13 +428,13 @@ body {
   backdrop-filter: blur(30px);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   perspective: 1000px;
-  width: 720px;           /* was 450px */
-  flex-shrink: 0;
+  width: 100%;
+  max-width: 1100px;
 }
 
 .hero-main-image {
   width: 100%;
-  aspect-ratio: 16/9;     /* was 9/16 */
+  aspect-ratio: 16/9;
   background: rgba(255, 255, 255, 0.02);
   border-radius: 16px;
   border-top-left-radius: 0;
@@ -458,7 +450,6 @@ body {
   position: relative;
   overflow: hidden;
 }
-
 
 .heroimg {
   width: 100%;
@@ -486,6 +477,7 @@ body {
   opacity: 1;
 }
 
+/* Feature rows */
 .feature-row {
   min-height: 100vh;
   display: flex;
@@ -563,7 +555,7 @@ body {
 
 .feature-icon-container {
   width: 100%;
-  aspect-ratio: 9/16;
+  aspect-ratio: 1/1;
   background: rgba(255, 255, 255, 0.02);
   border-radius: 16px;
   border-top-left-radius: 0;
@@ -589,7 +581,6 @@ body {
   transform: scale(1.05);
 }
 
-/* Info sections */
 .feature-content-info {
   width: 100%;
 }
@@ -651,7 +642,6 @@ body {
   color: var(--mainLight);
 }
 
-/* Features list */
 .features-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(450px, 1fr));
@@ -694,7 +684,6 @@ body {
   line-height: 1.6;
 }
 
-/* Getting started */
 .getting-started {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
@@ -872,29 +861,14 @@ footer a:hover {
   color: var(--main);
 }
 
+/* Responsive */
 @media (max-width: 1024px) {
   .hero-image-container {
-    flex: 0 0 auto;
-    max-width: 600px;     /* was 380px */
-    width: 100%;
-  }
-  .hero-layout {
-    flex-direction: column;
-    gap: 50px;
-  }
-
-  .hero-image-container {
-    flex: 0 0 auto;
-    max-width: 380px;
-    width: 100%;
+    max-width: 100%;
   }
 
   .hero-content {
-    text-align: center;
-  }
-
-  .hero-actions {
-    align-items: center;
+    max-width: 100%;
   }
 
   .feature-content {
