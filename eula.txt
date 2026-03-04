@@ -1,0 +1,34 @@
+END USER LICENSE AGREEMENT (EULA) FOR CORDEX
+
+IMPORTANT - READ CAREFULLY: This End User License Agreement ("Agreement") is a legal agreement between you (either an individual or a single entity) and Raoufbaa ("Author") for the Cordex software product ("Software"). By installing, copying, or otherwise using the Software, you agree to be bound by the terms of this Agreement. If you do not agree to the terms of this Agreement, do not install or use the Software.
+
+1. GRANT OF LICENSE
+The Author grants you a personal, non-exclusive, non-transferable, and limited license to install and use the Software for personal and non-commercial purposes.
+
+2. DESCRIPTION OF OTHER RIGHTS AND LIMITATIONS
+- Limitations on Reverse Engineering, Decompilation, and Disassembly: You may not reverse engineer, decompile, or disassemble the Software, except and only to the extent that such activity is expressly permitted by applicable law notwithstanding this limitation.
+- Separation of Components: The Software is licensed as a single product. Its component parts may not be separated for use on more than one computer.
+- Reproduction and Distribution: You may not reproduce, distribute, or transfer the Software without prior written permission from the Author.
+
+3. THIRD-PARTY SOFTWARE
+The Software redistributes and relies on third-party software components, which are governed by their respective licenses. This includes, but is not limited to:
+- CefSharp (Chromium Embedded Framework for .NET): Used to render web content within the application. Licensed under BSD and subject to Chromium/CEF licensing terms. Acknowledgments and licenses are available within their respective source repositories.
+- WPF-UI: A UI framework used for the application interface, licensed under MIT License.
+- Assorted Open-Source Libraries: UI frameworks, network APIs, and associated tools are used. Acknowledgments and licenses for these third-party packages are available within their respective source repositories.
+
+4. PRIVACY AND DATA TRANSFER
+The Software may facilitate local network communication and data exchange between devices. Communication is typically point-to-point where theoretically possible. While the Software orchestrates and connects these devices, the Author is not responsible for intercepting, interpreting, or safeguarding the transmitted local network payload.
+
+5. AUTOMATIC UPDATES
+The Software contains mechanisms for automatic versioning and remote update discovery. The Software periodically communicates with GitHub APIs and remote servers owned by the Author to notify, download, and initiate executable installer patches. You consent to the operation and installation execution of this service.
+
+6. DISCLAIMER OF WARRANTY
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHOR OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+7. LIMITATION OF LIABILITY
+To the maximum extent permitted by applicable law, in no event shall the Author be liable for any special, incidental, indirect, or consequential damages whatsoever (including, without limitation, damages for loss of business profits, business interruption, loss of business information, or any other pecuniary loss) arising out of the use of or inability to use the Software, even if the Author has been advised of the possibility of such damages.
+
+8. TERMINATION
+Without prejudice to any other rights, the Author may terminate this Agreement if you fail to comply with its terms and conditions. In such event, you must destroy all copies of the Software and all of its component parts.
+
+By installing this software, you affirm that you have read, understood, and accept these terms.
