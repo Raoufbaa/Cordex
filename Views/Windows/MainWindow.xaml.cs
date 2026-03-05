@@ -281,6 +281,17 @@ public partial class MainWindow : Window
         // Passing them as CLI args has no effect in CefSharp and can cause conflicts.
         settings.CefCommandLineArgs.Add("enforce-webrtc-ip-permission-check", "0");
 
+        // Disable mDNS obfuscation of local IPs in ICE candidates.
+        // Chrome's WebRtcHideLocalIpsWithMdns feature replaces real IPs with .local hostnames.
+        // CefSharp has NO mDNS resolver, so these candidates are unresolvable — ICE silently
+        // hangs at 'checking' forever (never reaches 'failed', bypassing our error handlers).
+        settings.CefCommandLineArgs.Add("disable-features", "WebRtcHideLocalIpsWithMdns");
+
+        // Remove the renderer process sandbox so CefSharp's renderer can create UDP sockets
+        // freely for WebRTC ICE connectivity checks. Without this, the sandbox may prevent
+        // the renderer from binding UDP ports, causing ICE to silently fail on some systems.
+        settings.CefCommandLineArgs.Add("no-sandbox", "1");
+
         // Performance settings based on hardware acceleration
         if (hwAccel)
         {
@@ -396,50 +407,160 @@ public partial class MainWindow : Window
     if (window.__cordexWebRtcRecovery) return;
     window.__cordexWebRtcRecovery = true;
 
-    var _reloadPending = false;
+    var _actionPending   = false;
+    var _reconnectCount  = 0;
+    var MAX_SOFT_RETRIES = 2; // after 2 soft reconnects, fall back to hard reload
+
+    // ── Hard reset (last resort: WASM state corrupted by getCodecSurvey) ────
     function scheduleReload(reason) {
-        if (_reloadPending) return;
-        _reloadPending = true;
-        console.warn('[Cordex] WebRTC recovery triggered (' + reason + '). Reloading in 800ms to reset sandbox...');
+        if (_actionPending) return;
+        _actionPending = true;
+        console.warn('[Cordex] Hard reload (' + reason + ')...');
         setTimeout(function() { location.reload(); }, 800);
     }
 
-    // Catch the getCodecSurvey error that Discord throws on voice disconnect.
-    // This is the primary cause of the DTLS hang on reconnect.
+    // ── Smart reconnect: disconnect + rejoin same channel ───────────────────
+    // Triggered when DTLS/ICE is stuck. Much less disruptive than a full reload:
+    //   1. Click Disconnect to cleanly exit the broken session.
+    //   2. Wait 1.5s for Discord cleanup.
+    //   3. Push the same channel path to Discord's SPA router so it shows
+    //      the 'Join Voice Channel' prompt.
+    //   4. Auto-click 'Join Voice Channel' if found.
+    //   5. Release the action lock so downstream failures are caught again.
+    //   After MAX_SOFT_RETRIES, escalate to full page reload.
+    function attemptSmartReconnect(reason) {
+        if (_actionPending) return;
+        _actionPending = true;
+        _reconnectCount++;
+
+        if (_reconnectCount > MAX_SOFT_RETRIES) {
+            console.warn('[Cordex] Max reconnects reached, hard reload...');
+            setTimeout(function() { location.reload(); }, 500);
+            return;
+        }
+
+        console.warn('[Cordex] DTLS stuck (' + reason + '). Soft reconnect #' + _reconnectCount + '...');
+        var channelPath = window.location.pathname;
+
+        setTimeout(function() {
+            // Discord may show its own Reconnect button in some failure states
+            var retryBtn = document.querySelector('[aria-label=""Reconnect""]') ||
+                           document.querySelector('[aria-label=""Try Again""]');
+            if (retryBtn) {
+                console.warn('[Cordex] Clicking Discord Reconnect button.');
+                retryBtn.click();
+                setTimeout(function() { _actionPending = false; }, 8000);
+                return;
+            }
+
+            // Click Disconnect to cleanly exit the broken voice session
+            var disconnectBtn = document.querySelector('[aria-label=""Disconnect""]');
+            if (disconnectBtn) {
+                console.warn('[Cordex] Disconnecting from broken voice session...');
+                disconnectBtn.click();
+
+                setTimeout(function() {
+                    // Re-navigate to same channel via Discord's SPA router
+                    try {
+                        window.history.pushState({}, '', channelPath);
+                        window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+                    } catch(ex) {}
+
+                    // Auto-click Join Voice Channel if the button appears
+                    setTimeout(function() {
+                        var joinBtn = document.querySelector('[aria-label=""Join Voice Channel""]') ||
+                                      document.querySelector('[class*=""joinButton""]') ||
+                                      document.querySelector('button[class*=""connect""]');
+                        if (joinBtn) {
+                            console.warn('[Cordex] Auto-clicking Join Voice Channel.');
+                            joinBtn.click();
+                        }
+                        // Release lock — next eventual failure will be caught again
+                        setTimeout(function() { _actionPending = false; }, 8000);
+                    }, 1500);
+                }, 1500);
+            } else {
+                // No disconnect button — full reload
+                location.reload();
+            }
+        }, 800);
+    }
+
+    // ── getCodecSurvey / MediaEngine = WASM corruption → hard reload ────────
     window.addEventListener('unhandledrejection', function(e) {
         var msg = (e && e.reason && e.reason.message) ? e.reason.message : '';
-        if (msg.indexOf('getCodecSurvey') !== -1 ||
-            msg.indexOf('MediaEngine') !== -1) {
+        if (msg.indexOf('getCodecSurvey') !== -1 || msg.indexOf('MediaEngine') !== -1) {
             e.preventDefault();
             scheduleReload('getCodecSurvey unhandledrejection');
         }
     });
-
     window.addEventListener('error', function(e) {
         var msg = (e && e.message) ? e.message : '';
-        if (msg.indexOf('getCodecSurvey') !== -1 ||
-            msg.indexOf('MediaEngine') !== -1) {
+        if (msg.indexOf('getCodecSurvey') !== -1 || msg.indexOf('MediaEngine') !== -1) {
             e.preventDefault();
             scheduleReload('getCodecSurvey error');
         }
     });
 
-    // Also intercept RTCPeerConnection to detect DTLS/ICE failures directly.
-    // If an RTCPeerConnection enters 'failed' state, the DTLS negotiation is dead.
+    // ── RTCPeerConnection intercept ──────────────────────────────────────────
     var _OrigRTCPeerConnection = window.RTCPeerConnection;
     if (_OrigRTCPeerConnection) {
         window.RTCPeerConnection = function(config, constraints) {
-            var pc = new _OrigRTCPeerConnection(config, constraints);
+            var pc  = new _OrigRTCPeerConnection(config, constraints);
+            var _iceTimeout   = null;
+            var ICE_TIMEOUT_MS = 18000; // 18s — give ICE plenty of time; reconnect after if still stuck
+
+            // ── Offer debouncer ──────────────────────────────────────
+            // Log analysis showed 4 rapid renegotiations in <500ms (Streams changed x2,
+            // Initial, Codecs changed). Each restarts ICE in CefSharp. 400ms debounce
+            // coalesces them so ICE only restarts once.
+            var _origCreateOffer    = pc.createOffer.bind(pc);
+            var _offerTimer         = null;
+            var _pendingRes         = null;
+            var _pendingRej         = null;
+            pc.createOffer = function(optOrSucc, fail, opts) {
+                var o = (typeof optOrSucc === 'object' && optOrSucc !== null) ? optOrSucc : (opts || {});
+                if (typeof optOrSucc === 'function') return _origCreateOffer(optOrSucc, fail, o);
+                return new Promise(function(res, rej) {
+                    if (_offerTimer !== null) {
+                        clearTimeout(_offerTimer);
+                        if (_pendingRej) _pendingRej(new DOMException('debounced', 'InvalidStateError'));
+                    }
+                    _pendingRes = res; _pendingRej = rej;
+                    _offerTimer = setTimeout(function() {
+                        _offerTimer = _pendingRes = _pendingRej = null;
+                        _origCreateOffer(o).then(res, rej);
+                    }, 400);
+                });
+            };
+
+            // ── ICE timeout watchdog ─────────────────────────────────
+            function clearIceTimeout() {
+                if (_iceTimeout !== null) { clearTimeout(_iceTimeout); _iceTimeout = null; }
+            }
+            function startIceTimeout(label) {
+                clearIceTimeout();
+                _iceTimeout = setTimeout(function() {
+                    if (pc.iceConnectionState === 'checking' || pc.iceConnectionState === 'new' ||
+                        pc.connectionState    === 'connecting') {
+                        attemptSmartReconnect('ICE stuck after 18s (' + label + ')');
+                    }
+                }, ICE_TIMEOUT_MS);
+            }
+
             pc.addEventListener('connectionstatechange', function() {
-                if (pc.connectionState === 'failed') {
-                    scheduleReload('RTCPeerConnection failed');
-                }
+                var s = pc.connectionState;
+                if      (s === 'failed')     { clearIceTimeout(); attemptSmartReconnect('connectionState=failed'); }
+                else if (s === 'connecting') { startIceTimeout('connectionState=connecting'); }
+                else if (s === 'connected' || s === 'closed') { clearIceTimeout(); _reconnectCount = 0; }
             });
             pc.addEventListener('iceconnectionstatechange', function() {
-                if (pc.iceConnectionState === 'failed') {
-                    scheduleReload('ICE connection failed');
-                }
+                var s = pc.iceConnectionState;
+                if      (s === 'failed')    { clearIceTimeout(); attemptSmartReconnect('iceConnectionState=failed'); }
+                else if (s === 'checking')  { startIceTimeout('iceConnectionState=checking'); }
+                else if (s === 'connected' || s === 'completed' || s === 'closed') { clearIceTimeout(); }
             });
+
             return pc;
         };
         window.RTCPeerConnection.prototype = _OrigRTCPeerConnection.prototype;
@@ -448,6 +569,7 @@ public partial class MainWindow : Window
 ";
         ExecuteScript(script);
     }
+
 
     private void ApplyReducedMotion()
     {
@@ -563,6 +685,16 @@ public partial class MainWindow : Window
                 Dispatcher.Invoke(() => callback(task.Result.Result));
             }
         });
+    }
+
+    // ── DevTools (F9) ────────────────────────────────────────────────────────
+    private void OnWindowPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.F9)
+        {
+            Browser.ShowDevTools();
+            e.Handled = true;
+        }
     }
 
     // ── Title Bar Buttons ─────────────────────────────────────────────────────

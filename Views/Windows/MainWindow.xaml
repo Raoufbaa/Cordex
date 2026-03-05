@@ -15,7 +15,8 @@
     ResizeMode="CanResize"
     WindowStartupLocation="CenterScreen"
     ShowInTaskbar="True"
-    Background="#1e1f22">
+    Background="#1e1f22"
+    PreviewKeyDown="OnWindowPreviewKeyDown">
 
     <WindowChrome.WindowChrome>
         <WindowChrome
