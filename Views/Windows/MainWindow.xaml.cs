@@ -131,6 +131,7 @@ public partial class MainWindow : Window
         Browser.RequestHandler  = new DiscordRequestHandler();
         Browser.MenuHandler     = new NoContextMenuHandler();
         Browser.PermissionHandler = new MediaPermissionHandler();
+        Browser.LifeSpanHandler = new ScreenShareLifeSpanHandler();
         Browser.BrowserSettings = new BrowserSettings { WindowlessFrameRate = 60 };
         Browser.Address         = "https://discord.com/app";
         Browser.LoadingStateChanged += OnBrowserLoadingStateChanged;
@@ -273,6 +274,12 @@ public partial class MainWindow : Window
         // Essential media stream flags
         settings.CefCommandLineArgs.Add("enable-media-stream", "1");
         settings.CefCommandLineArgs.Add("enable-usermedia-screen-capturing", "1");
+        // Enable legacy screen capture API for CEF (chromeMediaSource)
+        settings.CefCommandLineArgs.Add("enable-usermedia-screen-capture", "1");
+        // Use fake UI to auto-approve screen capture (we show our own picker)
+        settings.CefCommandLineArgs.Add("use-fake-ui-for-media-stream", "1");
+        // Auto-select the entire screen as the default source
+        settings.CefCommandLineArgs.Add("auto-select-desktop-capture-source", "Entire screen");
         settings.CefCommandLineArgs.Add("autoplay-policy", "no-user-gesture-required");
 
         // NOTE: WebRTC IP handling (all_interfaces, multiple_routes, nonproxied_udp)
@@ -388,6 +395,9 @@ public partial class MainWindow : Window
                 });
             }
 
+            // Inject screen share picker script first
+            Dispatcher.Invoke(InjectScreenSharePicker);
+            
             // Inject WebRTC recovery script on every page load.
             // ROOT CAUSE OF DTLS HANG:
             //   When Discord disconnects from a voice channel, it calls getCodecSurvey()
@@ -400,6 +410,206 @@ public partial class MainWindow : Window
         }
     }
 
+    private void InjectScreenSharePicker()
+    {
+        const string script = @"
+(function() {
+    if (window.__cordexScreenShareFixed) return;
+    window.__cordexScreenShareFixed = true;
+
+    console.log('[Cordex] Installing screen share handler for CEF');
+
+    // Store original
+    const _origGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+    let _isScreenShareActive = false;
+    let _currentStream = null;
+    
+    // Create a simple picker UI
+    function showScreenPicker() {
+        return new Promise((resolve, reject) => {
+            const overlay = document.createElement('div');
+            overlay.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.85);
+                z-index: 999999;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            `;
+            
+            const dialog = document.createElement('div');
+            dialog.style.cssText = `
+                background: #2b2d31;
+                border-radius: 8px;
+                padding: 24px;
+                min-width: 400px;
+                max-width: 500px;
+                color: #fff;
+                box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+            `;
+            
+            dialog.innerHTML = `
+                <h2 style='margin: 0 0 16px 0; font-size: 20px; font-weight: 600;'>Choose what to share</h2>
+                <div style='margin-bottom: 20px;'>
+                    <button id='cordex-share-screen' style='
+                        width: 100%;
+                        padding: 16px;
+                        margin-bottom: 12px;
+                        background: #5865f2;
+                        color: white;
+                        border: none;
+                        border-radius: 4px;
+                        font-size: 16px;
+                        cursor: pointer;
+                        font-weight: 500;
+                    '>🖥️ Entire Screen</button>
+                    <button id='cordex-share-window' style='
+                        width: 100%;
+                        padding: 16px;
+                        background: #4752c4;
+                        color: white;
+                        border: none;
+                        border-radius: 4px;
+                        font-size: 16px;
+                        cursor: pointer;
+                        font-weight: 500;
+                    '>🪟 Application Window</button>
+                </div>
+                <button id='cordex-cancel' style='
+                    width: 100%;
+                    padding: 12px;
+                    background: transparent;
+                    color: #b9bbbe;
+                    border: 1px solid #4e5058;
+                    border-radius: 4px;
+                    font-size: 14px;
+                    cursor: pointer;
+                '>Cancel</button>
+            `;
+            
+            overlay.appendChild(dialog);
+            document.body.appendChild(overlay);
+            
+            const buttons = dialog.querySelectorAll('button');
+            buttons.forEach(btn => {
+                btn.addEventListener('mouseenter', () => {
+                    if (btn.id !== 'cordex-cancel') {
+                        btn.style.filter = 'brightness(1.1)';
+                    } else {
+                        btn.style.background = '#4e5058';
+                    }
+                });
+                btn.addEventListener('mouseleave', () => {
+                    btn.style.filter = '';
+                    if (btn.id === 'cordex-cancel') {
+                        btn.style.background = 'transparent';
+                    }
+                });
+            });
+            
+            document.getElementById('cordex-share-screen').onclick = () => {
+                document.body.removeChild(overlay);
+                resolve('screen');
+            };
+            
+            document.getElementById('cordex-share-window').onclick = () => {
+                document.body.removeChild(overlay);
+                resolve('window');
+            };
+            
+            document.getElementById('cordex-cancel').onclick = () => {
+                document.body.removeChild(overlay);
+                reject(new DOMException('User cancelled screen share', 'NotAllowedError'));
+            };
+        });
+    }
+    
+    // Override getDisplayMedia
+    navigator.mediaDevices.getDisplayMedia = async function(constraints) {
+        console.log('[Cordex] getDisplayMedia intercepted, original constraints:', JSON.stringify(constraints));
+        
+        // If screen share is already active, stop the previous stream first
+        if (_isScreenShareActive && _currentStream) {
+            console.log('[Cordex] Stopping previous screen share stream before starting new one');
+            _currentStream.getTracks().forEach(track => track.stop());
+            _currentStream = null;
+            _isScreenShareActive = false;
+            // Wait a bit for cleanup
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
+        try {
+            // Show our picker
+            const choice = await showScreenPicker();
+            console.log('[Cordex] User selected:', choice);
+            
+            // Build constraints based on user choice
+            const modifiedConstraints = {
+                video: {
+                    displaySurface: choice === 'screen' ? 'monitor' : 'window',
+                    cursor: 'always',
+                    width: { ideal: 1920, max: 3840 },
+                    height: { ideal: 1080, max: 2160 },
+                    frameRate: { ideal: 30, max: 60 }
+                },
+                audio: constraints?.audio || false
+            };
+            
+            console.log('[Cordex] Calling original getDisplayMedia with:', JSON.stringify(modifiedConstraints));
+            
+            // Call the original getDisplayMedia - CEF should auto-approve with fake UI
+            const stream = await _origGetDisplayMedia(modifiedConstraints);
+            
+            _currentStream = stream;
+            _isScreenShareActive = true;
+            
+            // Monitor when stream ends
+            stream.getTracks().forEach(track => {
+                track.addEventListener('ended', () => {
+                    console.log('[Cordex] Screen share track ended');
+                    _isScreenShareActive = false;
+                    _currentStream = null;
+                });
+            });
+            
+            console.log('[Cordex] Stream obtained successfully!');
+            console.log('[Cordex] Stream ID:', stream.id);
+            console.log('[Cordex] Video tracks:', stream.getVideoTracks().length);
+            console.log('[Cordex] Audio tracks:', stream.getAudioTracks().length);
+            
+            if (stream.getVideoTracks().length > 0) {
+                const videoTrack = stream.getVideoTracks()[0];
+                const settings = videoTrack.getSettings();
+                console.log('[Cordex] Video track settings:', JSON.stringify(settings));
+                console.log('[Cordex] Video track enabled:', videoTrack.enabled);
+                console.log('[Cordex] Video track muted:', videoTrack.muted);
+                console.log('[Cordex] Video track readyState:', videoTrack.readyState);
+            }
+            
+            return stream;
+            
+        } catch (error) {
+            _isScreenShareActive = false;
+            _currentStream = null;
+            console.error('[Cordex] Screen share failed!');
+            console.error('[Cordex] Error name:', error.name);
+            console.error('[Cordex] Error message:', error.message);
+            console.error('[Cordex] Error stack:', error.stack);
+            throw error;
+        }
+    };
+    
+    console.log('[Cordex] Screen share handler installed successfully');
+})();
+";
+        ExecuteScript(script);
+    }
+
     private void InjectWebRtcRecoveryScript()
     {
         const string script = @"
@@ -409,27 +619,50 @@ public partial class MainWindow : Window
 
     var _actionPending   = false;
     var _reconnectCount  = 0;
-    var MAX_SOFT_RETRIES = 2; // after 2 soft reconnects, fall back to hard reload
+    var _isScreenSharing = false;  // Track if we're currently screen sharing
+    var MAX_SOFT_RETRIES = 2;
 
-    // ── Hard reset (last resort: WASM state corrupted by getCodecSurvey) ────
+    // Track screen sharing state
+    if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+        const _origGetDisplayMedia = navigator.mediaDevices.getDisplayMedia;
+        navigator.mediaDevices.getDisplayMedia = async function() {
+            _isScreenSharing = true;
+            try {
+                const stream = await _origGetDisplayMedia.apply(this, arguments);
+                // Monitor when screen share stops
+                stream.getTracks().forEach(track => {
+                    track.addEventListener('ended', () => {
+                        _isScreenSharing = false;
+                        console.log('[Cordex] Screen share track ended');
+                    });
+                });
+                return stream;
+            } catch (error) {
+                _isScreenSharing = false;
+                throw error;
+            }
+        };
+    }
+
     function scheduleReload(reason) {
         if (_actionPending) return;
+        // Don't reload if we're actively screen sharing
+        if (_isScreenSharing) {
+            console.warn('[Cordex] Skipping reload - screen share is active (' + reason + ')');
+            return;
+        }
         _actionPending = true;
         console.warn('[Cordex] Hard reload (' + reason + ')...');
         setTimeout(function() { location.reload(); }, 800);
     }
 
-    // ── Smart reconnect: disconnect + rejoin same channel ───────────────────
-    // Triggered when DTLS/ICE is stuck. Much less disruptive than a full reload:
-    //   1. Click Disconnect to cleanly exit the broken session.
-    //   2. Wait 1.5s for Discord cleanup.
-    //   3. Push the same channel path to Discord's SPA router so it shows
-    //      the 'Join Voice Channel' prompt.
-    //   4. Auto-click 'Join Voice Channel' if found.
-    //   5. Release the action lock so downstream failures are caught again.
-    //   After MAX_SOFT_RETRIES, escalate to full page reload.
     function attemptSmartReconnect(reason) {
         if (_actionPending) return;
+        // Don't reconnect if we're actively screen sharing
+        if (_isScreenSharing) {
+            console.warn('[Cordex] Skipping reconnect - screen share is active (' + reason + ')');
+            return;
+        }
         _actionPending = true;
         _reconnectCount++;
 
@@ -443,7 +676,6 @@ public partial class MainWindow : Window
         var channelPath = window.location.pathname;
 
         setTimeout(function() {
-            // Discord may show its own Reconnect button in some failure states
             var retryBtn = document.querySelector('[aria-label=""Reconnect""]') ||
                            document.querySelector('[aria-label=""Try Again""]');
             if (retryBtn) {
@@ -453,20 +685,17 @@ public partial class MainWindow : Window
                 return;
             }
 
-            // Click Disconnect to cleanly exit the broken voice session
             var disconnectBtn = document.querySelector('[aria-label=""Disconnect""]');
             if (disconnectBtn) {
                 console.warn('[Cordex] Disconnecting from broken voice session...');
                 disconnectBtn.click();
 
                 setTimeout(function() {
-                    // Re-navigate to same channel via Discord's SPA router
                     try {
                         window.history.pushState({}, '', channelPath);
                         window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
                     } catch(ex) {}
 
-                    // Auto-click Join Voice Channel if the button appears
                     setTimeout(function() {
                         var joinBtn = document.querySelector('[aria-label=""Join Voice Channel""]') ||
                                       document.querySelector('[class*=""joinButton""]') ||
@@ -475,45 +704,46 @@ public partial class MainWindow : Window
                             console.warn('[Cordex] Auto-clicking Join Voice Channel.');
                             joinBtn.click();
                         }
-                        // Release lock — next eventual failure will be caught again
                         setTimeout(function() { _actionPending = false; }, 8000);
                     }, 1500);
                 }, 1500);
             } else {
-                // No disconnect button — full reload
                 location.reload();
             }
         }, 800);
     }
 
-    // ── getCodecSurvey / MediaEngine = WASM corruption → hard reload ────────
+    // getCodecSurvey error handler - don't reload if screen sharing
     window.addEventListener('unhandledrejection', function(e) {
         var msg = (e && e.reason && e.reason.message) ? e.reason.message : '';
         if (msg.indexOf('getCodecSurvey') !== -1 || msg.indexOf('MediaEngine') !== -1) {
             e.preventDefault();
-            scheduleReload('getCodecSurvey unhandledrejection');
+            if (!_isScreenSharing) {
+                scheduleReload('getCodecSurvey unhandledrejection');
+            } else {
+                console.warn('[Cordex] getCodecSurvey error suppressed - screen share active');
+            }
         }
     });
     window.addEventListener('error', function(e) {
         var msg = (e && e.message) ? e.message : '';
         if (msg.indexOf('getCodecSurvey') !== -1 || msg.indexOf('MediaEngine') !== -1) {
             e.preventDefault();
-            scheduleReload('getCodecSurvey error');
+            if (!_isScreenSharing) {
+                scheduleReload('getCodecSurvey error');
+            } else {
+                console.warn('[Cordex] getCodecSurvey error suppressed - screen share active');
+            }
         }
     });
 
-    // ── RTCPeerConnection intercept ──────────────────────────────────────────
     var _OrigRTCPeerConnection = window.RTCPeerConnection;
     if (_OrigRTCPeerConnection) {
         window.RTCPeerConnection = function(config, constraints) {
             var pc  = new _OrigRTCPeerConnection(config, constraints);
             var _iceTimeout   = null;
-            var ICE_TIMEOUT_MS = 18000; // 18s — give ICE plenty of time; reconnect after if still stuck
+            var ICE_TIMEOUT_MS = 18000;
 
-            // ── Offer debouncer ──────────────────────────────────────
-            // Log analysis showed 4 rapid renegotiations in <500ms (Streams changed x2,
-            // Initial, Codecs changed). Each restarts ICE in CefSharp. 400ms debounce
-            // coalesces them so ICE only restarts once.
             var _origCreateOffer    = pc.createOffer.bind(pc);
             var _offerTimer         = null;
             var _pendingRes         = null;
@@ -534,7 +764,6 @@ public partial class MainWindow : Window
                 });
             };
 
-            // ── ICE timeout watchdog ─────────────────────────────────
             function clearIceTimeout() {
                 if (_iceTimeout !== null) { clearTimeout(_iceTimeout); _iceTimeout = null; }
             }
@@ -864,7 +1093,8 @@ public class MediaPermissionHandler : CefSharp.Handler.PermissionHandler
         string requestingOrigin, MediaAccessPermissionType requestedPermissions,
         IMediaAccessCallback callback)
     {
-        // Auto-grant all media permissions for Discord
+        // Auto-grant ALL media permissions including screen capture
+        // The screen picker will be handled by CEF's built-in UI
         using (callback)
         {
             callback.Continue(requestedPermissions);
@@ -883,5 +1113,32 @@ public class MediaPermissionHandler : CefSharp.Handler.PermissionHandler
             callback.Continue(PermissionRequestResult.Accept);
         }
         return true;
+    }
+}
+
+public class ScreenCaptureDisplayHandler : CefSharp.Handler.DisplayHandler
+{
+    // This handler ensures screen capture dialogs are shown properly
+}
+
+public class ScreenShareLifeSpanHandler : CefSharp.Handler.LifeSpanHandler
+{
+    protected override bool OnBeforePopup(
+        IWebBrowser chromiumWebBrowser, IBrowser browser, IFrame frame,
+        string targetUrl, string targetFrameName, WindowOpenDisposition targetDisposition,
+        bool userGesture, IPopupFeatures popupFeatures, IWindowInfo windowInfo,
+        IBrowserSettings browserSettings, ref bool noJavascriptAccess, out IWebBrowser? newBrowser)
+    {
+        // Allow popups for screen picker (chrome://webrtc-internals or picker dialogs)
+        if (targetUrl.Contains("webrtc") || targetUrl.Contains("picker") || targetUrl.Contains("chrome://"))
+        {
+            newBrowser = null;
+            return false; // Let CEF handle it
+        }
+        
+        newBrowser = null;
+        return base.OnBeforePopup(chromiumWebBrowser, browser, frame, targetUrl, targetFrameName,
+            targetDisposition, userGesture, popupFeatures, windowInfo, browserSettings,
+            ref noJavascriptAccess, out newBrowser);
     }
 }
