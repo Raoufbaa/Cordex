@@ -292,7 +292,7 @@ public partial class MainWindow : Window
         // Chrome's WebRtcHideLocalIpsWithMdns feature replaces real IPs with .local hostnames.
         // CefSharp has NO mDNS resolver, so these candidates are unresolvable — ICE silently
         // hangs at 'checking' forever (never reaches 'failed', bypassing our error handlers).
-        settings.CefCommandLineArgs.Add("disable-features", "WebRtcHideLocalIpsWithMdns");
+        // (Combined with other disable-features below)
 
         // Remove the renderer process sandbox so CefSharp's renderer can create UDP sockets
         // freely for WebRTC ICE connectivity checks. Without this, the sandbox may prevent
@@ -316,6 +316,57 @@ public partial class MainWindow : Window
         settings.CefCommandLineArgs.Add("disable-renderer-backgrounding", "1");
         settings.CefCommandLineArgs.Add("disable-background-timer-throttling", "1");
         settings.CefCommandLineArgs.Add("disable-backgrounding-occluded-windows", "1");
+
+        // Aggressive Performance Flags
+        settings.CefCommandLineArgs.Add("disable-site-isolation-trials", "1");       // Huge RAM/CPU saver for single-site wrappers
+        settings.CefCommandLineArgs.Add("enable-quic", "1");                         // Faster networking
+        settings.CefCommandLineArgs.Add("disable-extensions", "1");                  // Disable extension system entirely
+        settings.CefCommandLineArgs.Add("disable-pdf-extension", "1");
+        settings.CefCommandLineArgs.Add("disable-plugins-discovery", "1");
+        settings.CefCommandLineArgs.Add("disable-spell-checking", "1");              // Saves CPU on typing
+        settings.CefCommandLineArgs.Add("disable-print-preview", "1");               // Not needed in Discord wrapper
+        settings.CefCommandLineArgs.Add("disable-reading-from-canvas", "1");         // Anti-fingerprinting but performance positive
+        settings.CefCommandLineArgs.Add("enable-zero-copy", "1");                    // Reduces CPU usage during rasterization (works well with hardware accel)
+        settings.CefCommandLineArgs.Add("disable-component-update", "1");            // Stops background component updates
+        settings.CefCommandLineArgs.Add("disable-features", "WebRtcHideLocalIpsWithMdns,InterestFeedContentSuggestions,BlinkGenPropertyTrees,SafeBrowsing"); // Combine all disable-features here
+        settings.CefCommandLineArgs.Add("disable-logging", "1");
+        settings.CefCommandLineArgs.Add("disable-metrics", "1");
+        settings.CefCommandLineArgs.Add("disable-metrics-reporter", "1");
+
+        // Apply performance limits if enabled
+        if (SettingsManager.Current.EnablePerformanceLimits)
+        {
+            // Memory limits
+            if (SettingsManager.Current.MaxRamMB >= 100)
+            {
+                int maxRamMB = SettingsManager.Current.MaxRamMB;
+                
+                // Set renderer process limit (in MB)
+                settings.CefCommandLineArgs.Add("renderer-process-limit", "3");
+                
+                // Limit JavaScript heap size - scale with total RAM limit
+                // Give JS heap about 40% of total limit divided by expected processes
+                int jsHeapLimit = (maxRamMB * 40) / 100; // 40% of total for JS heap
+                settings.CefCommandLineArgs.Add("max-old-space-size", jsHeapLimit.ToString());
+                
+                // Limit disk cache size - scale with RAM limit
+                long diskCacheSize = Math.Min(100 * 1024 * 1024, maxRamMB * 1024L * 1024L / 2); // 100MB max or half of RAM limit
+                settings.CefCommandLineArgs.Add("disk-cache-size", diskCacheSize.ToString());
+                
+                // Reduce media cache - scale with RAM limit
+                long mediaCacheSize = Math.Min(50 * 1024 * 1024, maxRamMB * 1024L * 512L); // 50MB max
+                settings.CefCommandLineArgs.Add("media-cache-size", mediaCacheSize.ToString());
+            }
+
+            // CPU optimization flags
+            // Reduce animation frame rate to save CPU
+            int targetFps = 30; // Aggressively force 30 FPS if limits enabled
+            settings.CefCommandLineArgs.Add("max-gum-fps", targetFps.ToString());
+            
+            // Limit background tab CPU usage
+            settings.CefCommandLineArgs.Add("disable-background-networking", "1");
+            settings.CefCommandLineArgs.Add("disable-sync", "1");
+        }
 
         Cef.Initialize(settings, performDependencyCheck: false, browserProcessHandler: null);
         _cefInitialized = true;

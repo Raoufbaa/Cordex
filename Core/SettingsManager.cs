@@ -38,6 +38,7 @@ public class AppSettings
     public bool ReducedMotion         { get; set; } = false;
     public bool EnablePerformanceLimits { get; set; } = false;
     public int  MaxCpuCores           { get; set; } = Environment.ProcessorCount;
+    public int  MaxCpuPercent         { get; set; } = 100; // Maximum CPU usage percentage
     public int  MaxRamMB              { get; set; } = 200;
     public bool EnableCpuAffinity     { get; set; } = false;
     public long CpuAffinityMask       { get; set; } = 0;

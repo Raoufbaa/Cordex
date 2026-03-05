@@ -312,6 +312,7 @@ public partial class SettingsWindow : FluentWindow
         s.ReducedMotion            = ToggleReducedMotion.IsChecked == true;
         s.EnablePerformanceLimits  = TogglePerformanceLimits.IsChecked == true;
         s.MaxCpuCores              = (int)SliderCpuCores.Value;
+        s.MaxCpuPercent            = 100;
         s.MaxRamMB                 = (int)SliderRamLimit.Value;
         s.LimitGpuUsage            = ToggleLimitGpu.IsChecked == true;
         s.ReduceBackgroundActivity = ToggleReduceBackground.IsChecked == true;
@@ -463,6 +464,9 @@ public partial class SettingsWindow : FluentWindow
         if (TxtRamLimit != null)
             TxtRamLimit.Text = $"{(int)e.NewValue} MB";
     }
+
+
+
 
 
     private void BtnExpandCpuAffinity_Click(object sender, RoutedEventArgs e)

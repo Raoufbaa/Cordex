@@ -8,6 +8,7 @@ namespace Cordex;
 public partial class App : System.Windows.Application
 {
     private static Mutex? _mutex;
+    private static System.Threading.Timer? _performanceMonitorTimer;
 
     protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
@@ -109,6 +110,18 @@ public partial class App : System.Windows.Application
             try
             {
                 PerformanceManager.ApplyPerformanceSettings();
+                
+                // Start performance monitoring timer (runs every 2 seconds for aggressive enforcement)
+                _performanceMonitorTimer = new System.Threading.Timer(
+                    _ => 
+                    {
+                        PerformanceManager.MonitorAndEnforceRamLimit();
+                        PerformanceManager.MonitorAndEnforceCpuLimit();
+                    },
+                    null,
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromSeconds(2)
+                );
             }
             catch (Exception perfEx)
             {
@@ -143,6 +156,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(System.Windows.ExitEventArgs e)
     {
+        _performanceMonitorTimer?.Dispose();
         _mutex?.ReleaseMutex();
         _mutex?.Dispose();
         base.OnExit(e);
