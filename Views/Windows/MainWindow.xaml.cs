@@ -1128,7 +1128,68 @@ public class DiscordRequestHandler : CefSharp.Handler.RequestHandler
             browser.Reload();
         }
     }
+
+    protected override IResourceRequestHandler GetResourceRequestHandler(
+        IWebBrowser chromiumWebBrowser, IBrowser browser, IFrame frame,
+        IRequest request, bool isNavigation, bool isDownload,
+        string requestInitiator, ref bool disableDefaultHandling)
+    {
+        return new DiscordResourceRequestHandler();
+    }
 }
+
+public class DiscordResourceRequestHandler : CefSharp.Handler.ResourceRequestHandler
+{
+    protected override CefReturnValue OnBeforeResourceLoad(
+        IWebBrowser chromiumWebBrowser, IBrowser browser, IFrame frame,
+        IRequest request, IRequestCallback callback)
+    {
+        var s = SettingsManager.Current;
+        string url = request.Url.ToLowerInvariant();
+
+        // ── Privacy Blocks ────────────────────────────────────────────────────
+        if (s.BlockFingerprinting && (url.Contains("api.js") || url.Contains("cdn-cgi")))
+            return CefReturnValue.Cancel;
+
+        if (s.BlockTelemetry && (url.Contains("/science") || url.Contains("/tracing")))
+            return CefReturnValue.Cancel;
+
+        if (s.BlockSentry && url.Contains("sentry"))
+            return CefReturnValue.Cancel;
+
+        if (s.BlockTypingIndicator && url.Contains("/typing"))
+            return CefReturnValue.Cancel;
+
+        if (s.BlockAnimatedAssets && (url.EndsWith(".gif") || url.Contains("/a_")))
+            return CefReturnValue.Cancel;
+
+        if (s.BlockCrashReports && (url.Contains("errors.discord.com") || url.Contains("/report-")))
+            return CefReturnValue.Cancel;
+
+        // ── Performance Blocks ────────────────────────────────────────────────
+        if (s.BlockExperiments && url.Contains("/experiments"))
+            return CefReturnValue.Cancel;
+
+        if (s.BlockMarketing && (url.Contains("/quests/") || url.Contains("/promotions") ||
+                                  url.Contains("/referrals/") || url.Contains("/collectibles-marketing")))
+            return CefReturnValue.Cancel;
+
+        if (s.BlockDetectableGames && (url.Contains("/games/detectable") || url.Contains("/non-games/detectable")))
+            return CefReturnValue.Cancel;
+
+        if (s.BlockExternalImages && (url.Contains("images-ext-1.discordapp.net") || url.Contains("images-ext-2.discordapp.net")))
+            return CefReturnValue.Cancel;
+
+        if (s.BlockStatusPolling && url.Contains("status.discord.com"))
+            return CefReturnValue.Cancel;
+
+        if (s.BlockContentInventory && url.Contains("/content-inventory/"))
+            return CefReturnValue.Cancel;
+
+        return CefReturnValue.Continue;
+    }
+}
+
 
 public class NoContextMenuHandler : CefSharp.Handler.ContextMenuHandler
 {

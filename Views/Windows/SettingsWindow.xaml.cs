@@ -89,6 +89,22 @@ public partial class SettingsWindow : FluentWindow
         UpdatePerformanceLimitsUI(s.EnablePerformanceLimits);
         InitializeCpuAffinityCheckboxes();
 
+        // Load API blocking
+        ToggleBlockFingerprinting.IsChecked  = s.BlockFingerprinting;
+        ToggleBlockTelemetry.IsChecked       = s.BlockTelemetry;
+        ToggleBlockSentry.IsChecked          = s.BlockSentry;
+        ToggleBlockTypingIndicator.IsChecked = s.BlockTypingIndicator;
+        ToggleBlockAnimatedAssets.IsChecked  = s.BlockAnimatedAssets;
+        ToggleBlockCrashReports.IsChecked    = s.BlockCrashReports;
+
+        // Load performance blocking
+        ToggleBlockExperiments.IsChecked      = s.BlockExperiments;
+        ToggleBlockMarketing.IsChecked        = s.BlockMarketing;
+        ToggleBlockDetectableGames.IsChecked  = s.BlockDetectableGames;
+        ToggleBlockExternalImages.IsChecked   = s.BlockExternalImages;
+        ToggleBlockStatusPolling.IsChecked    = s.BlockStatusPolling;
+        ToggleBlockContentInventory.IsChecked = s.BlockContentInventory;
+
         // Set version text
         VersionTextBlock.Text = $"Version {VersionManager.GetCurrentVersion()}";
 
@@ -319,6 +335,22 @@ public partial class SettingsWindow : FluentWindow
 
         // Save CPU affinity from checkboxes
         SaveCpuAffinityFromCheckboxes();
+
+        // Save API blocking
+        s.BlockFingerprinting   = ToggleBlockFingerprinting.IsChecked == true;
+        s.BlockTelemetry        = ToggleBlockTelemetry.IsChecked == true;
+        s.BlockSentry           = ToggleBlockSentry.IsChecked == true;
+        s.BlockTypingIndicator  = ToggleBlockTypingIndicator.IsChecked == true;
+        s.BlockAnimatedAssets   = ToggleBlockAnimatedAssets.IsChecked == true;
+        s.BlockCrashReports     = ToggleBlockCrashReports.IsChecked == true;
+
+        // Save performance blocking
+        s.BlockExperiments      = ToggleBlockExperiments.IsChecked == true;
+        s.BlockMarketing        = ToggleBlockMarketing.IsChecked == true;
+        s.BlockDetectableGames  = ToggleBlockDetectableGames.IsChecked == true;
+        s.BlockExternalImages   = ToggleBlockExternalImages.IsChecked == true;
+        s.BlockStatusPolling    = ToggleBlockStatusPolling.IsChecked == true;
+        s.BlockContentInventory = ToggleBlockContentInventory.IsChecked == true;
 
         // Handle Start with Windows registry
         SetStartWithWindows(s.StartWithWindows);

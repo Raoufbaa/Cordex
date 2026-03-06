@@ -8,7 +8,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>Cordex</RootNamespace>
     <AssemblyTitle>Cordex</AssemblyTitle>
-    <Version>1.1.18</Version>
+    <Version>1.1.19</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>

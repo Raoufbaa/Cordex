@@ -53,6 +53,22 @@ public class AppSettings
     // Notifications
     public bool ShowNotifications     { get; set; } = true;
     public bool NotificationSounds    { get; set; } = true;
+    
+    // API Blocking
+    public bool BlockFingerprinting   { get; set; } = false;
+    public bool BlockTelemetry        { get; set; } = false;
+    public bool BlockSentry           { get; set; } = false;
+    public bool BlockTypingIndicator  { get; set; } = false;
+    public bool BlockAnimatedAssets   { get; set; } = false;
+    public bool BlockCrashReports     { get; set; } = false;
+    
+    // Performance Blocking
+    public bool BlockExperiments      { get; set; } = false;
+    public bool BlockMarketing        { get; set; } = false;
+    public bool BlockDetectableGames  { get; set; } = false;
+    public bool BlockExternalImages   { get; set; } = false;
+    public bool BlockStatusPolling    { get; set; } = false;
+    public bool BlockContentInventory { get; set; } = false;
 }
 
 public static class SettingsManager
