@@ -40,6 +40,9 @@ public static class PerformanceManager
     private static readonly Dictionary<int, DateTime> _lastCpuCheck = new();
     private static readonly Dictionary<int, double> _lastCpuUsage = new();
 
+    private static List<Process> _cachedCefProcesses = new();
+    private static DateTime _lastProcessScan = DateTime.MinValue;
+
     public static void ApplyPerformanceSettings()
     {
         try
@@ -168,32 +171,43 @@ public static class PerformanceManager
 
     private static List<Process> GetCefSharpProcesses()
     {
-        var cefProcesses = new List<Process>();
-
         try
         {
-            var mainProcess = Process.GetCurrentProcess();
-            var childIds = ProcessHelper.GetChildProcessIds(mainProcess.Id);
-
-            var allProcesses = Process.GetProcesses();
-
-            foreach (var proc in allProcesses)
+            // Clean up exited processes
+            _cachedCefProcesses.RemoveAll(p => 
             {
-                try
+                try { return p.HasExited; }
+                catch { return true; }
+            });
+
+            // Rescan every 10 seconds or if we have no processes
+            if (_cachedCefProcesses.Count == 0 || (DateTime.Now - _lastProcessScan).TotalSeconds > 10)
+            {
+                var mainProcess = Process.GetCurrentProcess();
+                var childIds = ProcessHelper.GetChildProcessIds(mainProcess.Id);
+                var allProcesses = Process.GetProcesses();
+
+                foreach (var proc in allProcesses)
                 {
-                    if (proc.Id == mainProcess.Id) continue;
-                    
-                    if (childIds.Contains(proc.Id) || 
-                        proc.ProcessName.Contains("CefSharp", StringComparison.OrdinalIgnoreCase) ||
-                        proc.ProcessName.Contains("BrowserSubprocess", StringComparison.OrdinalIgnoreCase))
+                    try
                     {
-                        cefProcesses.Add(proc);
+                        if (proc.Id == mainProcess.Id) continue;
+                        
+                        if (!_cachedCefProcesses.Any(p => p.Id == proc.Id) &&
+                            (childIds.Contains(proc.Id) || 
+                            proc.ProcessName.Contains("CefSharp", StringComparison.OrdinalIgnoreCase) ||
+                            proc.ProcessName.Contains("BrowserSubprocess", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            _cachedCefProcesses.Add(proc);
+                        }
+                    }
+                    catch
+                    {
+                        // Process may have exited or access denied
                     }
                 }
-                catch
-                {
-                    // Process may have exited or access denied
-                }
+                
+                _lastProcessScan = DateTime.Now;
             }
         }
         catch (Exception ex)
@@ -201,7 +215,7 @@ public static class PerformanceManager
             Debug.WriteLine($"Failed to get CefSharp processes: {ex.Message}");
         }
 
-        return cefProcesses;
+        return _cachedCefProcesses.ToList();
     }
 
     public static void MonitorAndEnforceRamLimit()

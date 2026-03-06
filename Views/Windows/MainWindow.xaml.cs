@@ -20,7 +20,6 @@ public partial class MainWindow : Window
     private bool        _isExiting = false;
     private bool        _isInVoiceChannel = false;
     private bool        _discordLoaded = false;
-    private System.Threading.Timer? _voiceCheckTimer;
     
     // Keep icon handles alive
     private System.Drawing.Icon? _bigIcon;
@@ -134,6 +133,7 @@ public partial class MainWindow : Window
         Browser.LifeSpanHandler = new ScreenShareLifeSpanHandler();
         Browser.BrowserSettings = new BrowserSettings { WindowlessFrameRate = 60 };
         Browser.Address         = "https://discord.com/app";
+        Browser.JavascriptMessageReceived += OnJavascriptMessageReceived;
         Browser.LoadingStateChanged += OnBrowserLoadingStateChanged;
 
         Loaded            += OnWindowLoaded;
@@ -313,9 +313,20 @@ public partial class MainWindow : Window
             settings.CefCommandLineArgs.Add("disable-accelerated-video-decode", "1");
         }
 
-        settings.CefCommandLineArgs.Add("disable-renderer-backgrounding", "1");
-        settings.CefCommandLineArgs.Add("disable-background-timer-throttling", "1");
-        settings.CefCommandLineArgs.Add("disable-backgrounding-occluded-windows", "1");
+        // Allow Chromium to throttle background tabs/processes if user wants reduced background activity
+        if (SettingsManager.Current.ReduceBackgroundActivity)
+        {
+            // Do NOT disable backgrounding - let Chrome save CPU.
+            settings.CefCommandLineArgs.Add("enable-ipc-flooding-protection", "1");
+        }
+        else
+        {
+            // Force maximum performance even in background
+            settings.CefCommandLineArgs.Add("disable-renderer-backgrounding", "1");
+            settings.CefCommandLineArgs.Add("disable-background-timer-throttling", "1");
+            settings.CefCommandLineArgs.Add("disable-backgrounding-occluded-windows", "1");
+            settings.CefCommandLineArgs.Add("disable-ipc-flooding-protection", "1");
+        }
 
         // Aggressive Performance Flags
         settings.CefCommandLineArgs.Add("disable-site-isolation-trials", "1");       // Huge RAM/CPU saver for single-site wrappers
@@ -400,8 +411,8 @@ public partial class MainWindow : Window
         InitTray();
         // Don't init keybinds yet - wait for Discord to load
         
-        // Start checking for voice channel connection
-        _voiceCheckTimer = new System.Threading.Timer(CheckVoiceChannelStatus, null, 2000, 2000);
+        // Use Javascript Observer instead of C# polling
+        // _voiceCheckTimer = new System.Threading.Timer(CheckVoiceChannelStatus, null, 2000, 2000);
     }
 
     private void InitTray()
@@ -455,10 +466,131 @@ public partial class MainWindow : Window
             //   which throws "getCodecSurvey is not implemented on MediaEngine of browsers".
             //   This unhandled error corrupts CefSharp's WebRTC WASM state — UDP ports
             //   from the previous session remain locked, so the next DTLS handshake hangs.
-            // FIX: Catch the error + any RTCPeerConnection failure, then reload the page
-            //   to reset the WebRTC sandbox, giving every voice join a clean slate.
+            // fixes frozen WebRTC instances where ICE connectivity hangs forever
             Dispatcher.Invoke(InjectWebRtcRecoveryScript);
+
+            // Inject voice state observer to replace C# polling
+            Dispatcher.Invoke(InjectVoiceStateObserver);
         }
+    }
+
+    private void OnJavascriptMessageReceived(object? sender, JavascriptMessageReceivedEventArgs e)
+    {
+        if (e.Message is not string message) return;
+
+        Dispatcher.Invoke(() =>
+        {
+            if (message.StartsWith("VoiceState:"))
+            {
+                var parts = message.Split(':');
+                if (parts.Length >= 3)
+                {
+                    bool inVoice = parts[1] == "true";
+                    bool isMuted = parts[2] == "true";
+                    
+                    UpdateVoiceState(inVoice, isMuted);
+                }
+            }
+        });
+    }
+
+    private void UpdateVoiceState(bool inVoice, bool isMuted)
+    {
+        if (inVoice != _isInVoiceChannel)
+        {
+            bool wasInVoice = _isInVoiceChannel;
+            _isInVoiceChannel = inVoice;
+            
+            if (!_isInVoiceChannel)
+            {
+                // Not in voice - show default icon and stop audio monitoring
+                _muteState = MuteState.Default;
+                _tray.SetState(MuteState.Default);
+                _audio.Stop();
+            }
+            else
+            {
+                // Just joined voice channel
+                if (!wasInVoice && SettingsManager.Current.AutomaticallyMute)
+                {
+                    // Auto-mute on join
+                    System.Threading.Tasks.Task.Delay(500).ContinueWith(_ =>
+                    {
+                        Dispatcher.Invoke(() =>
+                        {
+                            ExecuteScript(@"(function(){var b=document.querySelector('[aria-label=""Mute""]');if(b)b.click();})();");
+                            _muteState = MuteState.Muted;
+                            _tray.SetState(MuteState.Muted);
+                            _audio.Stop();
+                        });
+                    });
+                }
+                else
+                {
+                    // Update state from observer
+                    _muteState = isMuted ? MuteState.Muted : MuteState.Unmuted;
+                    _tray.SetState(_muteState);
+                    
+                    if (SettingsManager.Current.ShowVoiceActivity)
+                    {
+                        if (_muteState == MuteState.Unmuted) _audio.Start();
+                        else _audio.Stop();
+                    }
+                    else
+                    {
+                        _audio.Stop();
+                    }
+                }
+            }
+        }
+        else if (_isInVoiceChannel)
+        {
+            // Already in voice, just update mute state
+            _muteState = isMuted ? MuteState.Muted : MuteState.Unmuted;
+            _tray.SetState(_muteState);
+            
+            if (SettingsManager.Current.ShowVoiceActivity)
+            {
+                if (_muteState == MuteState.Unmuted) _audio.Start();
+                else _audio.Stop();
+            }
+            else
+            {
+                _audio.Stop();
+            }
+        }
+    }
+
+    private void InjectVoiceStateObserver()
+    {
+        const string script = @"
+(function() {
+    if (window.__cordexVoiceObserver) return;
+    window.__cordexVoiceObserver = true;
+
+    let lastInVoice = null;
+    let lastMuted = null;
+
+    setInterval(() => {
+        try {
+            const voiceButtons = document.querySelectorAll('[aria-label=""Disconnect""], [aria-label=""Mute""], [aria-label=""Unmute""]');
+            const inVoice = voiceButtons.length > 0;
+            const isMuted = document.querySelector('[aria-label=""Unmute""]') !== null;
+
+            if (inVoice !== lastInVoice || isMuted !== lastMuted) {
+                lastInVoice = inVoice;
+                lastMuted = isMuted;
+                if (window.CefSharp && window.CefSharp.PostMessage) {
+                    window.CefSharp.PostMessage('VoiceState:' + inVoice + ':' + isMuted);
+                }
+            }
+        } catch (e) {
+            console.error('[Cordex] Voice observer error:', e);
+        }
+    }, 1000); // Check once a second, much cheaper than IPC
+})();
+";
+        ExecuteScript(script);
     }
 
     private void InjectScreenSharePicker()
@@ -854,10 +986,10 @@ public partial class MainWindow : Window
     private void ApplyReducedMotion()
     {
         var css = @"
-            * {
-                animation-duration: 0.01ms !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: 0.01ms !important;
+            *, *::before, *::after {
+                animation: none !important;
+                transition: none !important;
+                scroll-behavior: auto !important;
             }
         ";
         
@@ -870,90 +1002,6 @@ public partial class MainWindow : Window
         ";
         
         ExecuteScript(script);
-    }
-
-    private void CheckVoiceChannelStatus(object? state)
-    {
-        if (!_discordLoaded) return;
-
-        Dispatcher.Invoke(() =>
-        {
-            ExecuteScriptAsync(@"
-                (function() {
-                    const voicePanel = document.querySelector('[class*=""panels""] [class*=""container""]');
-                    const voiceButtons = document.querySelectorAll('[aria-label=""Disconnect""], [aria-label=""Mute""], [aria-label=""Unmute""]');
-                    return voiceButtons.length > 0;
-                })();
-            ", (result) =>
-            {
-                bool inVoice = result is bool b && b;
-                
-                if (inVoice != _isInVoiceChannel)
-                {
-                    bool wasInVoice = _isInVoiceChannel;
-                    _isInVoiceChannel = inVoice;
-                    
-                    if (!_isInVoiceChannel)
-                    {
-                        // Not in voice - show default icon and stop audio monitoring
-                        _muteState = MuteState.Default;
-                        _tray.SetState(MuteState.Default);
-                        _audio.Stop();
-                    }
-                    else
-                    {
-                        // Just joined voice channel
-                        if (!wasInVoice && SettingsManager.Current.AutomaticallyMute)
-                        {
-                            // Auto-mute on join
-                            System.Threading.Tasks.Task.Delay(500).ContinueWith(_ =>
-                            {
-                                Dispatcher.Invoke(() =>
-                                {
-                                    ExecuteScript(@"(function(){var b=document.querySelector('[aria-label=""Mute""]');if(b)b.click();})();");
-                                    _muteState = MuteState.Muted;
-                                    _tray.SetState(MuteState.Muted);
-                                    _audio.Stop();
-                                });
-                            });
-                        }
-                        else
-                        {
-                            // Check current mute state
-                            CheckMuteState();
-                        }
-                    }
-                }
-            });
-        });
-    }
-
-    private void CheckMuteState()
-    {
-        ExecuteScriptAsync(@"
-            (function() {
-                const muteBtn = document.querySelector('[aria-label=""Unmute""]');
-                return muteBtn !== null;
-            })();
-        ", (result) =>
-        {
-            bool isMuted = result is bool b && b;
-            _muteState = isMuted ? MuteState.Muted : MuteState.Unmuted;
-            _tray.SetState(_muteState);
-            
-            // Only show voice activity if enabled in settings
-            if (SettingsManager.Current.ShowVoiceActivity)
-            {
-                if (_muteState == MuteState.Unmuted)
-                    _audio.Start();
-                else
-                    _audio.Stop();
-            }
-            else
-            {
-                _audio.Stop();
-            }
-        });
     }
 
     private void ExecuteScriptAsync(string script, Action<object?> callback)
@@ -1085,7 +1133,6 @@ public partial class MainWindow : Window
     private void ExitApp()
     {
         _isExiting = true;
-        _voiceCheckTimer?.Dispose();
         _audio.Dispose();
         _keys.Unregister();
         _tray.Dispose();
@@ -1168,6 +1215,9 @@ public class DiscordResourceRequestHandler : CefSharp.Handler.ResourceRequestHan
 
         // ── Performance Blocks ────────────────────────────────────────────────
         if (s.BlockExperiments && url.Contains("/experiments"))
+            return CefReturnValue.Cancel;
+
+        if (s.ReduceBackgroundActivity && (url.Contains("/science") || url.Contains("/outbound-promotions") || url.Contains("/metrics")))
             return CefReturnValue.Cancel;
 
         if (s.BlockMarketing && (url.Contains("/quests/") || url.Contains("/promotions") ||
