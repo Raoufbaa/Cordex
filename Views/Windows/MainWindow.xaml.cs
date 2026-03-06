@@ -1180,10 +1180,22 @@ public class DiscordResourceRequestHandler : CefSharp.Handler.ResourceRequestHan
         if (s.BlockExternalImages && (url.Contains("images-ext-1.discordapp.net") || url.Contains("images-ext-2.discordapp.net")))
             return CefReturnValue.Cancel;
 
-        if (s.BlockStatusPolling && url.Contains("status.discord.com"))
+        if (s.BlockStatusPolling && (url.Contains("status.discord.com") || url.Contains("/scheduled-maintenance")))
             return CefReturnValue.Cancel;
 
         if (s.BlockContentInventory && url.Contains("/content-inventory/"))
+            return CefReturnValue.Cancel;
+
+        if (s.BlockVendorChunks && url.Contains("/assets/vendors~"))
+            return CefReturnValue.Cancel;
+
+        if (s.BlockDiscordStore && url.Contains("/store/"))
+            return CefReturnValue.Cancel;
+
+        if (s.BlockUserSurveys && (url.Contains("/survey") || url.Contains("/premium-survey")))
+            return CefReturnValue.Cancel;
+
+        if (s.BlockStickerPacks && url.Contains("/sticker-packs"))
             return CefReturnValue.Cancel;
 
         return CefReturnValue.Continue;

@@ -69,6 +69,10 @@ public class AppSettings
     public bool BlockExternalImages   { get; set; } = false;
     public bool BlockStatusPolling    { get; set; } = false;
     public bool BlockContentInventory { get; set; } = false;
+    public bool BlockVendorChunks     { get; set; } = false;
+    public bool BlockDiscordStore     { get; set; } = false;
+    public bool BlockUserSurveys      { get; set; } = false;
+    public bool BlockStickerPacks     { get; set; } = false;
 }
 
 public static class SettingsManager

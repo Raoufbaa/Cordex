@@ -104,6 +104,10 @@ public partial class SettingsWindow : FluentWindow
         ToggleBlockExternalImages.IsChecked   = s.BlockExternalImages;
         ToggleBlockStatusPolling.IsChecked    = s.BlockStatusPolling;
         ToggleBlockContentInventory.IsChecked = s.BlockContentInventory;
+        ToggleBlockVendorChunks.IsChecked     = s.BlockVendorChunks;
+        ToggleBlockDiscordStore.IsChecked     = s.BlockDiscordStore;
+        ToggleBlockUserSurveys.IsChecked      = s.BlockUserSurveys;
+        ToggleBlockStickerPacks.IsChecked     = s.BlockStickerPacks;
 
         // Set version text
         VersionTextBlock.Text = $"Version {VersionManager.GetCurrentVersion()}";
@@ -351,6 +355,10 @@ public partial class SettingsWindow : FluentWindow
         s.BlockExternalImages   = ToggleBlockExternalImages.IsChecked == true;
         s.BlockStatusPolling    = ToggleBlockStatusPolling.IsChecked == true;
         s.BlockContentInventory = ToggleBlockContentInventory.IsChecked == true;
+        s.BlockVendorChunks     = ToggleBlockVendorChunks.IsChecked == true;
+        s.BlockDiscordStore     = ToggleBlockDiscordStore.IsChecked == true;
+        s.BlockUserSurveys      = ToggleBlockUserSurveys.IsChecked == true;
+        s.BlockStickerPacks     = ToggleBlockStickerPacks.IsChecked == true;
 
         // Handle Start with Windows registry
         SetStartWithWindows(s.StartWithWindows);

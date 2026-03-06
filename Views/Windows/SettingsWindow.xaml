@@ -414,57 +414,87 @@
 
                         <Border Background="#2B2D31" CornerRadius="8" Padding="16,16" Margin="0,0,0,8">
                             <StackPanel>
+
+                                <!-- Fingerprinting -->
                                 <CheckBox x:Name="ToggleBlockFingerprinting" Margin="0,0,0,16">
-                                    <TextBlock Foreground="#DCDDDE" FontSize="13">
-                                        <Run Text="Block known fingerprinting methods ("/>
-                                        <Run Text=" api.js " Background="#1E1F22" Foreground="#A3A6AA"/>
-                                        <Run Text=" and "/>
-                                        <Run Text=" cdn-cgi " Background="#1E1F22" Foreground="#A3A6AA"/>
-                                        <Run Text=")."/>
-                                    </TextBlock>
+                                    <StackPanel>
+                                        <TextBlock Foreground="#DCDDDE" FontSize="13">
+                                            <Run Text="Block known fingerprinting methods ("/>
+                                            <Run Text=" api.js " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=" and "/>
+                                            <Run Text=" cdn-cgi " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=")."/>
+                                        </TextBlock>
+                                        <TextBlock Text="Prevents scripts that collect browser fingerprint data for cross-session identity tracking."
+                                                   Foreground="#4E5058" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    </StackPanel>
                                 </CheckBox>
 
+                                <!-- Telemetry -->
                                 <CheckBox x:Name="ToggleBlockTelemetry" Margin="0,0,0,16">
-                                    <TextBlock Foreground="#DCDDDE" FontSize="13">
-                                        <Run Text="Block known telemetry endpoints ("/>
-                                        <Run Text=" /science " Background="#1E1F22" Foreground="#A3A6AA"/>
-                                        <Run Text=" and "/>
-                                        <Run Text=" /tracing " Background="#1E1F22" Foreground="#A3A6AA"/>
-                                        <Run Text=")."/>
-                                    </TextBlock>
+                                    <StackPanel>
+                                        <TextBlock Foreground="#DCDDDE" FontSize="13">
+                                            <Run Text="Block known telemetry endpoints ("/>
+                                            <Run Text=" /science " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=" and "/>
+                                            <Run Text=" /tracing " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=")."/>
+                                        </TextBlock>
+                                        <TextBlock Text="Stops session event analytics sent after every click, navigation, and on a timer."
+                                                   Foreground="#4E5058" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    </StackPanel>
                                 </CheckBox>
 
+                                <!-- Sentry -->
                                 <CheckBox x:Name="ToggleBlockSentry" Margin="0,0,0,16">
-                                    <TextBlock Foreground="#DCDDDE" FontSize="13">
-                                        <Run Text="Block loading Sentry in Discord"/>
-                                    </TextBlock>
+                                    <StackPanel>
+                                        <TextBlock Foreground="#DCDDDE" FontSize="13" Text="Block loading Sentry in Discord"/>
+                                        <TextBlock Text="Removes the Sentry SDK used for performance monitoring and error tracking."
+                                                   Foreground="#4E5058" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    </StackPanel>
                                 </CheckBox>
 
+                                <!-- Typing Indicator -->
                                 <CheckBox x:Name="ToggleBlockTypingIndicator" Margin="0,0,0,16">
-                                    <TextBlock Foreground="#DCDDDE" FontSize="13">
-                                        <Run Text="Block typing indicator ("/>
-                                        <Run Text=" /typing " Background="#1E1F22" Foreground="#A3A6AA"/>
-                                        <Run Text=")."/>
-                                    </TextBlock>
+                                    <StackPanel>
+                                        <TextBlock Foreground="#DCDDDE" FontSize="13">
+                                            <Run Text="Block typing indicator ("/>
+                                            <Run Text=" /typing " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=")."/>
+                                        </TextBlock>
+                                        <TextBlock Text="Stops polling for 'X is typing...' status events from Discord's servers."
+                                                   Foreground="#4E5058" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    </StackPanel>
                                 </CheckBox>
 
+                                <!-- Animated Assets -->
                                 <CheckBox x:Name="ToggleBlockAnimatedAssets" Margin="0,0,0,16">
-                                    <TextBlock Foreground="#DCDDDE" FontSize="13">
-                                        <Run Text="Block animated assets ("/>
-                                        <Run Text=" .gif " Background="#1E1F22" Foreground="#A3A6AA"/>
-                                        <Run Text=" and "/>
-                                        <Run Text=" /a_ " Background="#1E1F22" Foreground="#A3A6AA"/>
-                                        <Run Text=")."/>
-                                    </TextBlock>
+                                    <StackPanel>
+                                        <TextBlock Foreground="#DCDDDE" FontSize="13">
+                                            <Run Text="Block animated assets ("/>
+                                            <Run Text=" .gif " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=" and "/>
+                                            <Run Text=" /a_ " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=")."/>
+                                        </TextBlock>
+                                        <TextBlock Text="Blocks animated GIFs and Discord's animated avatars/emojis (a_ prefix). Reduces CPU from decoding animations."
+                                                   Foreground="#4E5058" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    </StackPanel>
                                 </CheckBox>
 
+                                <!-- Crash Reports -->
                                 <CheckBox x:Name="ToggleBlockCrashReports" Margin="0,0,0,0">
-                                    <TextBlock Foreground="#DCDDDE" FontSize="13">
-                                        <Run Text="Block crash reports ("/>
-                                        <Run Text=" errors.discord.com " Background="#1E1F22" Foreground="#A3A6AA"/>
-                                        <Run Text=")."/>
-                                    </TextBlock>
+                                    <StackPanel>
+                                        <TextBlock Foreground="#DCDDDE" FontSize="13">
+                                            <Run Text="Block crash reports ("/>
+                                            <Run Text=" errors.discord.com " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=")."/>
+                                        </TextBlock>
+                                        <TextBlock Text="Prevents error traces and crash dumps from being uploaded to Discord's error servers."
+                                                   Foreground="#4E5058" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    </StackPanel>
                                 </CheckBox>
+
                             </StackPanel>
                         </Border>
 
@@ -480,57 +510,145 @@
 
                         <Border Background="#2B2D31" CornerRadius="8" Padding="16,16" Margin="0,0,0,8">
                             <StackPanel>
+
+                                <!-- A/B Experiments -->
                                 <CheckBox x:Name="ToggleBlockExperiments" Margin="0,0,0,16">
-                                    <TextBlock Foreground="#DCDDDE" FontSize="13">
-                                        <Run Text="Block A/B experiments ("/>
-                                        <Run Text=" /experiments " Background="#1E1F22" Foreground="#A3A6AA"/>
-                                        <Run Text=") — saves ~400 KB startup JSON."/>
-                                    </TextBlock>
+                                    <StackPanel>
+                                        <TextBlock Foreground="#DCDDDE" FontSize="13">
+                                            <Run Text="Block A/B experiments ("/>
+                                            <Run Text=" /experiments " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=")."/>
+                                        </TextBlock>
+                                        <TextBlock Text="Skips the ~400 KB feature flag JSON loaded at startup for A/B testing. Has no impact on usability."
+                                                   Foreground="#4E5058" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    </StackPanel>
                                 </CheckBox>
 
+                                <!-- Quests & Marketing -->
                                 <CheckBox x:Name="ToggleBlockMarketing" Margin="0,0,0,16">
-                                    <TextBlock Foreground="#DCDDDE" FontSize="13">
-                                        <Run Text="Block quests &amp; marketing ("/>
-                                        <Run Text=" /quests/ " Background="#1E1F22" Foreground="#A3A6AA"/>
-                                        <Run Text=", "/>
-                                        <Run Text=" /promotions " Background="#1E1F22" Foreground="#A3A6AA"/>
-                                        <Run Text=", "/>
-                                        <Run Text=" /referrals/ " Background="#1E1F22" Foreground="#A3A6AA"/>
-                                        <Run Text=")."/>
-                                    </TextBlock>
+                                    <StackPanel>
+                                        <TextBlock Foreground="#DCDDDE" FontSize="13">
+                                            <Run Text="Block quests &amp; marketing ("/>
+                                            <Run Text=" /quests/ " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=", "/>
+                                            <Run Text=" /promotions " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=", "/>
+                                            <Run Text=" /referrals/ " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=")."/>
+                                        </TextBlock>
+                                        <TextBlock Text="Removes Nitro quest notifications, promotions, and referral program tracking requests."
+                                                   Foreground="#4E5058" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    </StackPanel>
                                 </CheckBox>
 
+                                <!-- Detectable Games -->
                                 <CheckBox x:Name="ToggleBlockDetectableGames" Margin="0,0,0,16">
-                                    <TextBlock Foreground="#DCDDDE" FontSize="13">
-                                        <Run Text="Block game library download ("/>
-                                        <Run Text=" /games/detectable " Background="#1E1F22" Foreground="#A3A6AA"/>
-                                        <Run Text=") — saves ~300 KB."/>
-                                    </TextBlock>
+                                    <StackPanel>
+                                        <TextBlock Foreground="#DCDDDE" FontSize="13">
+                                            <Run Text="Block game library download ("/>
+                                            <Run Text=" /games/detectable " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=")."/>
+                                        </TextBlock>
+                                        <TextBlock Text="Skips the ~300 KB game detection list used by Discord's rich presence feature."
+                                                   Foreground="#4E5058" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    </StackPanel>
                                 </CheckBox>
 
+                                <!-- External Image Proxy -->
                                 <CheckBox x:Name="ToggleBlockExternalImages" Margin="0,0,0,16">
-                                    <TextBlock Foreground="#DCDDDE" FontSize="13">
-                                        <Run Text="Block external image proxy ("/>
-                                        <Run Text=" images-ext-*.discordapp.net " Background="#1E1F22" Foreground="#A3A6AA"/>
-                                        <Run Text=") — disables link embeds."/>
-                                    </TextBlock>
+                                    <StackPanel>
+                                        <TextBlock Foreground="#DCDDDE" FontSize="13">
+                                            <Run Text="Block external image proxy ("/>
+                                            <Run Text=" images-ext-*.discordapp.net " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=")."/>
+                                        </TextBlock>
+                                        <TextBlock Text="Stops Discord from pre-fetching external link embeds and image previews. Disables URL embed images."
+                                                   Foreground="#4E5058" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    </StackPanel>
                                 </CheckBox>
 
+                                <!-- Status Polling -->
                                 <CheckBox x:Name="ToggleBlockStatusPolling" Margin="0,0,0,16">
-                                    <TextBlock Foreground="#DCDDDE" FontSize="13">
-                                        <Run Text="Block status page polling ("/>
-                                        <Run Text=" status.discord.com " Background="#1E1F22" Foreground="#A3A6AA"/>
-                                        <Run Text=")."/>
-                                    </TextBlock>
+                                    <StackPanel>
+                                        <TextBlock Foreground="#DCDDDE" FontSize="13">
+                                            <Run Text="Block status &amp; maintenance polling ("/>
+                                            <Run Text=" status.discord.com " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=", "/>
+                                            <Run Text=" /scheduled-maintenance " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=")."/>
+                                        </TextBlock>
+                                        <TextBlock Text="Stops background polling for outage banners and scheduled maintenance windows. Removes idle HTTP requests."
+                                                   Foreground="#4E5058" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    </StackPanel>
                                 </CheckBox>
 
-                                <CheckBox x:Name="ToggleBlockContentInventory" Margin="0,0,0,0">
-                                    <TextBlock Foreground="#DCDDDE" FontSize="13">
-                                        <Run Text="Block content inventory ("/>
-                                        <Run Text=" /content-inventory/ " Background="#1E1F22" Foreground="#A3A6AA"/>
-                                        <Run Text=") — disables Activity tab feed."/>
-                                    </TextBlock>
+                                <!-- Content Inventory -->
+                                <CheckBox x:Name="ToggleBlockContentInventory" Margin="0,0,0,16">
+                                    <StackPanel>
+                                        <TextBlock Foreground="#DCDDDE" FontSize="13">
+                                            <Run Text="Block content inventory ("/>
+                                            <Run Text=" /content-inventory/ " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=")."/>
+                                        </TextBlock>
+                                        <TextBlock Text="Disables the Activity tab content feed background requests. Reduces idle API polling."
+                                                   Foreground="#4E5058" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    </StackPanel>
                                 </CheckBox>
+
+                                <!-- Vendor JS Chunks -->
+                                <CheckBox x:Name="ToggleBlockVendorChunks" Margin="0,0,0,16">
+                                    <StackPanel>
+                                        <TextBlock Foreground="#DCDDDE" FontSize="13">
+                                            <Run Text="Block unused vendor JS chunks ("/>
+                                            <Run Text=" /assets/vendors~ " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=")."/>
+                                        </TextBlock>
+                                        <TextBlock Text="Prevents lazy-loading of large vendor JS bundles for Discord Store and other unused features. May break some UI sections."
+                                                   Foreground="#4E5058" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </CheckBox>
+
+                                <!-- Discord Store -->
+                                <CheckBox x:Name="ToggleBlockDiscordStore" Margin="0,0,0,16">
+                                    <StackPanel>
+                                        <TextBlock Foreground="#DCDDDE" FontSize="13">
+                                            <Run Text="Block Discord Store API ("/>
+                                            <Run Text=" /api/v*/store/ " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=")."/>
+                                        </TextBlock>
+                                        <TextBlock Text="Blocks store and shop API calls. Useful if you never use the Discord shop or Nitro store."
+                                                   Foreground="#4E5058" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </CheckBox>
+
+                                <!-- User Surveys -->
+                                <CheckBox x:Name="ToggleBlockUserSurveys" Margin="0,0,0,16">
+                                    <StackPanel>
+                                        <TextBlock Foreground="#DCDDDE" FontSize="13">
+                                            <Run Text="Block surveys &amp; upsells ("/>
+                                            <Run Text=" /survey " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=", "/>
+                                            <Run Text=" /premium-survey " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=")."/>
+                                        </TextBlock>
+                                        <TextBlock Text="Prevents Discord from fetching Nitro upsell surveys and in-app feedback prompts."
+                                                   Foreground="#4E5058" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </CheckBox>
+
+                                <!-- Sticker Packs -->
+                                <CheckBox x:Name="ToggleBlockStickerPacks" Margin="0,0,0,0">
+                                    <StackPanel>
+                                        <TextBlock Foreground="#DCDDDE" FontSize="13">
+                                            <Run Text="Block sticker pack downloads ("/>
+                                            <Run Text=" /sticker-packs " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=")."/>
+                                        </TextBlock>
+                                        <TextBlock Text="Stops downloading sticker pack metadata. Useful if you never browse or use Discord stickers."
+                                                   Foreground="#4E5058" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </CheckBox>
+
                             </StackPanel>
                         </Border>
 
