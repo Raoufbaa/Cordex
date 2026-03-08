@@ -208,5 +208,5 @@ Cordex is an unofficial third-party application and is not affiliated with, endo
 ---
 
 **Version**: 1.0.0  
-**Author**: [Your Name]  
-**Repository**: [GitHub URL] 
+**Author**: Raoufbaa
+**Repository**: https://github.com/Raoufbaa/Cordex
