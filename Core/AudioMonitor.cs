@@ -11,18 +11,25 @@ public class AudioMonitor : IDisposable
     private IMMDevice? _device;
     private IAudioMeterInformation? _meterInfo;
     
-    private const int CheckIntervalMs = 50;
+    private const int CheckIntervalMs = 100;
     private const int TalkingDebounceMs = 200;
     
     public event Action<bool>? VoiceActivityChanged;
     
     private bool _isTalking;
     private bool _isRunning;
-    private DateTime _lastVoiceDetected = DateTime.MinValue;
+    private long _lastVoiceDetectedTicks;
+    private float _threshold;
 
     public AudioMonitor()
     {
+        RefreshSettings();
         _timer = new System.Threading.Timer(CheckAudioLevel, null, Timeout.Infinite, Timeout.Infinite);
+    }
+
+    public void RefreshSettings()
+    {
+        _threshold = Math.Clamp(SettingsManager.Current.VoiceActivityThreshold / 100f, 0f, 1f);
     }
 
     public void Start()
@@ -31,6 +38,7 @@ public class AudioMonitor : IDisposable
         
         try
         {
+            RefreshSettings();
             _deviceEnumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
             
             // Try to get default capture device
@@ -48,10 +56,14 @@ public class AudioMonitor : IDisposable
             
             if (_meterInfo == null) return;
             
+            _lastVoiceDetectedTicks = Environment.TickCount64;
             _isRunning = true;
             _timer.Change(0, CheckIntervalMs);
         }
-        catch { }
+        catch
+        {
+            Cleanup();
+        }
     }
 
     public void Stop()
@@ -78,14 +90,10 @@ public class AudioMonitor : IDisposable
             int hr = _meterInfo.GetPeakValue(out float peak);
             
             if (hr != 0) return;
-            
-            // Get threshold from settings (convert 0-100 to 0.0-1.0)
-            float threshold = SettingsManager.Current.VoiceActivityThreshold / 100f;
-            
-            // Detect voice activity
-            if (peak > threshold)
+
+            if (peak > _threshold)
             {
-                _lastVoiceDetected = DateTime.Now;
+                _lastVoiceDetectedTicks = Environment.TickCount64;
                 
                 if (!_isTalking)
                 {
@@ -95,8 +103,7 @@ public class AudioMonitor : IDisposable
             }
             else
             {
-                // Keep talking state for debounce period after voice stops
-                var timeSinceLastVoice = (DateTime.Now - _lastVoiceDetected).TotalMilliseconds;
+                long timeSinceLastVoice = Environment.TickCount64 - _lastVoiceDetectedTicks;
                 
                 if (_isTalking && timeSinceLastVoice > TalkingDebounceMs)
                 {

@@ -565,29 +565,68 @@ public partial class MainWindow : Window
     {
         const string script = @"
 (function() {
-    if (window.__cordexVoiceObserver) return;
-    window.__cordexVoiceObserver = true;
+    if (window.__cordexVoiceObserver) {
+        if (typeof window.__cordexVoiceObserver.forceCheck === 'function') {
+            window.__cordexVoiceObserver.forceCheck();
+        }
+        return;
+    }
 
     let lastInVoice = null;
     let lastMuted = null;
+    let checkQueued = false;
 
-    setInterval(() => {
+    function readVoiceState() {
+        const inVoice =
+            document.querySelector('[aria-label=""Disconnect""]') !== null ||
+            document.querySelector('[aria-label=""Mute""]') !== null ||
+            document.querySelector('[aria-label=""Unmute""]') !== null;
+
+        const isMuted = document.querySelector('[aria-label=""Unmute""]') !== null;
+        return { inVoice, isMuted };
+    }
+
+    function postVoiceState() {
         try {
-            const voiceButtons = document.querySelectorAll('[aria-label=""Disconnect""], [aria-label=""Mute""], [aria-label=""Unmute""]');
-            const inVoice = voiceButtons.length > 0;
-            const isMuted = document.querySelector('[aria-label=""Unmute""]') !== null;
+            const state = readVoiceState();
 
-            if (inVoice !== lastInVoice || isMuted !== lastMuted) {
-                lastInVoice = inVoice;
-                lastMuted = isMuted;
+            if (state.inVoice !== lastInVoice || state.isMuted !== lastMuted) {
+                lastInVoice = state.inVoice;
+                lastMuted = state.isMuted;
                 if (window.CefSharp && window.CefSharp.PostMessage) {
-                    window.CefSharp.PostMessage('VoiceState:' + inVoice + ':' + isMuted);
+                    window.CefSharp.PostMessage('VoiceState:' + state.inVoice + ':' + state.isMuted);
                 }
             }
         } catch (e) {
             console.error('[Cordex] Voice observer error:', e);
         }
-    }, 1000); // Check once a second, much cheaper than IPC
+    }
+
+    function scheduleCheck() {
+        if (checkQueued) return;
+        checkQueued = true;
+
+        setTimeout(() => {
+            checkQueued = false;
+            postVoiceState();
+        }, 100);
+    }
+
+    window.__cordexVoiceObserver = { forceCheck: scheduleCheck };
+
+    document.addEventListener('click', scheduleCheck, true);
+    window.addEventListener('focus', scheduleCheck, { passive: true });
+    window.addEventListener('popstate', scheduleCheck, { passive: true });
+    window.addEventListener('hashchange', scheduleCheck, { passive: true });
+    document.addEventListener('visibilitychange', scheduleCheck, { passive: true });
+
+    setInterval(() => {
+        if (!document.hidden) {
+            postVoiceState();
+        }
+    }, 4000);
+
+    postVoiceState();
 })();
 ";
         ExecuteScript(script);
@@ -1057,6 +1096,8 @@ public partial class MainWindow : Window
 
     private void OnSettingsChanged()
     {
+        _audio.RefreshSettings();
+
         // Reload voice activity monitoring based on new settings
         if (_isInVoiceChannel)
         {

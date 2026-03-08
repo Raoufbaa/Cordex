@@ -9,6 +9,7 @@ public partial class App : System.Windows.Application
 {
     private static Mutex? _mutex;
     private static System.Threading.Timer? _performanceMonitorTimer;
+    private static int _performanceMonitorRunning;
 
     protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
@@ -110,18 +111,7 @@ public partial class App : System.Windows.Application
             try
             {
                 PerformanceManager.ApplyPerformanceSettings();
-                
-                // Start performance monitoring timer (runs every 2 seconds for aggressive enforcement)
-                _performanceMonitorTimer = new System.Threading.Timer(
-                    _ => 
-                    {
-                        PerformanceManager.MonitorAndEnforceRamLimit();
-                        PerformanceManager.MonitorAndEnforceCpuLimit();
-                    },
-                    null,
-                    TimeSpan.FromSeconds(2),
-                    TimeSpan.FromSeconds(2)
-                );
+                RefreshPerformanceMonitoring();
             }
             catch (Exception perfEx)
             {
@@ -152,6 +142,36 @@ public partial class App : System.Windows.Application
             );
             Shutdown();
         }
+    }
+
+    internal void RefreshPerformanceMonitoring()
+    {
+        _performanceMonitorTimer?.Dispose();
+        _performanceMonitorTimer = null;
+
+        if (!PerformanceManager.RequiresMonitoring())
+            return;
+
+        var interval = PerformanceManager.GetMonitoringInterval();
+        _performanceMonitorTimer = new System.Threading.Timer(
+            _ =>
+            {
+                if (Interlocked.Exchange(ref _performanceMonitorRunning, 1) == 1)
+                    return;
+
+                try
+                {
+                    PerformanceManager.RunMonitoringCycle();
+                }
+                finally
+                {
+                    Volatile.Write(ref _performanceMonitorRunning, 0);
+                }
+            },
+            null,
+            interval,
+            interval
+        );
     }
 
     protected override void OnExit(System.Windows.ExitEventArgs e)

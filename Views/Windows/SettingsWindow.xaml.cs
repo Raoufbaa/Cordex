@@ -371,6 +371,9 @@ public partial class SettingsWindow : FluentWindow
         if (s.EnablePerformanceLimits)
             PerformanceManager.ApplyPerformanceSettings();
 
+        if (System.Windows.Application.Current is App app)
+            app.RefreshPerformanceMonitoring();
+
         // Show restart message if hardware acceleration changed
         if (hwAccelChanged)
         {

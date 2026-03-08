@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Threading;
 
 namespace Cordex.Core;
 
@@ -42,6 +41,21 @@ public static class PerformanceManager
 
     private static List<Process> _cachedCefProcesses = new();
     private static DateTime _lastProcessScan = DateTime.MinValue;
+
+    public static bool RequiresMonitoring()
+    {
+        var settings = SettingsManager.Current;
+        return settings.EnablePerformanceLimits &&
+               (settings.MaxRamMB >= 100 || settings.MaxCpuPercent < 100);
+    }
+
+    public static TimeSpan GetMonitoringInterval()
+    {
+        var settings = SettingsManager.Current;
+        return settings.MaxCpuPercent < 100
+            ? TimeSpan.FromSeconds(5)
+            : TimeSpan.FromSeconds(15);
+    }
 
     public static void ApplyPerformanceSettings()
     {
@@ -218,6 +232,34 @@ public static class PerformanceManager
         return _cachedCefProcesses.ToList();
     }
 
+    public static void RunMonitoringCycle()
+    {
+        var settings = SettingsManager.Current;
+
+        if (!settings.EnablePerformanceLimits)
+            return;
+
+        try
+        {
+            var mainProcess = Process.GetCurrentProcess();
+            var cefProcesses = GetCefSharpProcesses();
+
+            if (settings.MaxRamMB >= 100)
+            {
+                MonitorAndEnforceRamLimit(mainProcess, cefProcesses, settings);
+            }
+
+            if (settings.MaxCpuPercent < 100)
+            {
+                MonitorAndEnforceCpuLimit(mainProcess, cefProcesses, settings);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to run performance monitoring cycle: {ex.Message}");
+        }
+    }
+
     public static void MonitorAndEnforceRamLimit()
     {
         var settings = SettingsManager.Current;
@@ -225,20 +267,32 @@ public static class PerformanceManager
         if (!settings.EnablePerformanceLimits || settings.MaxRamMB < 100)
             return;
 
+        MonitorAndEnforceRamLimit(Process.GetCurrentProcess(), GetCefSharpProcesses(), settings);
+    }
+
+    public static void MonitorAndEnforceCpuLimit()
+    {
+        var settings = SettingsManager.Current;
+
+        if (!settings.EnablePerformanceLimits || settings.MaxCpuPercent >= 100)
+            return;
+
+        MonitorAndEnforceCpuLimit(Process.GetCurrentProcess(), GetCefSharpProcesses(), settings);
+    }
+
+    private static void MonitorAndEnforceRamLimit(Process mainProcess, IReadOnlyList<Process> cefProcesses, AppSettings settings)
+    {
         try
         {
-            var mainProcess = Process.GetCurrentProcess();
-            var cefProcesses = GetCefSharpProcesses();
-            
             // Calculate total RAM usage across all processes
             mainProcess.Refresh();
             long totalRamMB = mainProcess.WorkingSet64 / (1024 * 1024);
-            
+
             foreach (var cefProc in cefProcesses)
             {
                 try
                 {
-                    cefProc.Refresh(); // Update memory stats
+                    cefProc.Refresh();
                     totalRamMB += cefProc.WorkingSet64 / (1024 * 1024);
                 }
                 catch
@@ -249,32 +303,26 @@ public static class PerformanceManager
 
             Debug.WriteLine($"Total RAM usage (Cordex + CefSharp): {totalRamMB} MB / {settings.MaxRamMB} MB");
 
-            // Only enforce limits if we're OVER the limit
             if (totalRamMB > settings.MaxRamMB)
             {
                 Debug.WriteLine($"RAM limit exceeded by {totalRamMB - settings.MaxRamMB} MB! Enforcing limits...");
 
-                // Calculate target per-process limits
                 int processCount = cefProcesses.Count + 1;
                 long targetTotalBytes = settings.MaxRamMB * 1024L * 1024L;
                 long targetPerProcessBytes = targetTotalBytes / processCount;
 
-                // Force garbage collection on main process
                 GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, true, true);
                 GC.WaitForPendingFinalizers();
                 GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, true, true);
 
-                // Trim main process working set
                 SetProcessWorkingSetSize(mainProcess.Handle, new IntPtr(1024 * 1024), new IntPtr(targetPerProcessBytes));
 
-                // Trim each CefSharp process that's using too much
                 foreach (var cefProc in cefProcesses)
                 {
                     try
                     {
                         long currentBytes = cefProc.WorkingSet64;
-                        
-                        // Only trim if this process is using more than its fair share
+
                         if (currentBytes > targetPerProcessBytes)
                         {
                             Debug.WriteLine($"Trimming CefSharp process {cefProc.Id} ({cefProc.ProcessName}): {currentBytes / (1024 * 1024)} MB -> target {targetPerProcessBytes / (1024 * 1024)} MB");
@@ -289,7 +337,6 @@ public static class PerformanceManager
             }
             else
             {
-                // Under limit - just track new processes, don't trim
                 ApplyCefSharpProcessLimits();
             }
         }
@@ -299,28 +346,22 @@ public static class PerformanceManager
         }
     }
 
-    public static void MonitorAndEnforceCpuLimit()
+    private static void MonitorAndEnforceCpuLimit(Process mainProcess, IReadOnlyList<Process> cefProcesses, AppSettings settings)
     {
-        var settings = SettingsManager.Current;
-
-        if (!settings.EnablePerformanceLimits || settings.MaxCpuPercent >= 100)
-            return;
-
         try
         {
-            var mainProcess = Process.GetCurrentProcess();
-            var cefProcesses = GetCefSharpProcesses();
-            var allProcesses = new List<Process> { mainProcess };
+            var allProcesses = new List<Process>(cefProcesses.Count + 1) { mainProcess };
             allProcesses.AddRange(cefProcesses);
 
             double totalCpuUsage = 0;
+            var cpuUsageByProcess = new Dictionary<int, double>(allProcesses.Count);
 
-            // Calculate total CPU usage across all processes
             foreach (var proc in allProcesses)
             {
                 try
                 {
                     double cpuUsage = GetProcessCpuUsage(proc);
+                    cpuUsageByProcess[proc.Id] = cpuUsage;
                     totalCpuUsage += cpuUsage;
                 }
                 catch
@@ -331,41 +372,34 @@ public static class PerformanceManager
 
             Debug.WriteLine($"Total CPU usage (Cordex + CefSharp): {totalCpuUsage:F1}% / {settings.MaxCpuPercent}%");
 
-            // Only throttle if we're OVER the limit
             if (totalCpuUsage > settings.MaxCpuPercent)
             {
                 Debug.WriteLine($"CPU limit exceeded by {totalCpuUsage - settings.MaxCpuPercent:F1}%! Throttling...");
 
-                // Calculate how much to throttle
                 double excessPercent = totalCpuUsage - settings.MaxCpuPercent;
                 double throttleRatio = excessPercent / totalCpuUsage;
 
-                // Throttle each process proportionally
                 foreach (var proc in allProcesses)
                 {
                     try
                     {
-                        double procCpuUsage = GetProcessCpuUsage(proc);
-                        
-                        // Only throttle processes using significant CPU
-                        if (procCpuUsage > 1.0)
+                        if (!cpuUsageByProcess.TryGetValue(proc.Id, out double procCpuUsage) || procCpuUsage <= 1.0)
+                            continue;
+
+                        if (throttleRatio > 0.5)
                         {
-                            // Reduce priority or add sleep time
-                            if (throttleRatio > 0.5) // More than 50% over limit
+                            if (proc.PriorityClass != ProcessPriorityClass.Idle)
                             {
-                                if (proc.PriorityClass != ProcessPriorityClass.Idle)
-                                {
-                                    proc.PriorityClass = ProcessPriorityClass.Idle;
-                                    Debug.WriteLine($"Set idle priority for process {proc.Id} ({proc.ProcessName})");
-                                }
+                                proc.PriorityClass = ProcessPriorityClass.Idle;
+                                Debug.WriteLine($"Set idle priority for process {proc.Id} ({proc.ProcessName})");
                             }
-                            else if (throttleRatio > 0.3) // More than 30% over limit
+                        }
+                        else if (throttleRatio > 0.3)
+                        {
+                            if (proc.PriorityClass != ProcessPriorityClass.BelowNormal)
                             {
-                                if (proc.PriorityClass != ProcessPriorityClass.BelowNormal)
-                                {
-                                    proc.PriorityClass = ProcessPriorityClass.BelowNormal;
-                                    Debug.WriteLine($"Reduced priority for process {proc.Id} ({proc.ProcessName})");
-                                }
+                                proc.PriorityClass = ProcessPriorityClass.BelowNormal;
+                                Debug.WriteLine($"Reduced priority for process {proc.Id} ({proc.ProcessName})");
                             }
                         }
                     }
@@ -377,7 +411,6 @@ public static class PerformanceManager
             }
             else
             {
-                // Under limit - restore normal priority
                 foreach (var proc in allProcesses)
                 {
                     try
@@ -387,7 +420,9 @@ public static class PerformanceManager
                             proc.PriorityClass = ProcessPriorityClass.Normal;
                         }
                     }
-                    catch { }
+                    catch
+                    {
+                    }
                 }
             }
         }
