@@ -531,7 +531,8 @@ public partial class MainWindow : Window
                     _muteState = isMuted ? MuteState.Muted : MuteState.Unmuted;
                     _tray.SetState(_muteState);
                     
-                    if (SettingsManager.Current.ShowVoiceActivity)
+                    // Only start audio monitoring if both settings are enabled
+                    if (SettingsManager.Current.ShowVoiceActivity && SettingsManager.Current.EnableAudioMonitoring)
                     {
                         if (_muteState == MuteState.Unmuted) _audio.Start();
                         else _audio.Stop();
@@ -549,7 +550,8 @@ public partial class MainWindow : Window
             _muteState = isMuted ? MuteState.Muted : MuteState.Unmuted;
             _tray.SetState(_muteState);
             
-            if (SettingsManager.Current.ShowVoiceActivity)
+            // Only start audio monitoring if both settings are enabled
+            if (SettingsManager.Current.ShowVoiceActivity && SettingsManager.Current.EnableAudioMonitoring)
             {
                 if (_muteState == MuteState.Unmuted) _audio.Start();
                 else _audio.Stop();
@@ -620,11 +622,12 @@ public partial class MainWindow : Window
     window.addEventListener('hashchange', scheduleCheck, { passive: true });
     document.addEventListener('visibilitychange', scheduleCheck, { passive: true });
 
+    // Reduced polling from 4s to 10s for better CPU usage when idle
     setInterval(() => {
         if (!document.hidden) {
             postVoiceState();
         }
-    }, 4000);
+    }, 10000);
 
     postVoiceState();
 })();
@@ -1098,10 +1101,12 @@ public partial class MainWindow : Window
     {
         _audio.RefreshSettings();
 
-        // Reload voice activity monitoring based on new settings
+        // Reload voice activity monitoring based on new settings (both must be enabled)
         if (_isInVoiceChannel)
         {
-            if (SettingsManager.Current.ShowVoiceActivity && _muteState == MuteState.Unmuted)
+            if (SettingsManager.Current.ShowVoiceActivity && 
+                SettingsManager.Current.EnableAudioMonitoring && 
+                _muteState == MuteState.Unmuted)
             {
                 _audio.Start();
             }
@@ -1126,8 +1131,8 @@ public partial class MainWindow : Window
         _muteState = _muteState == MuteState.Muted ? MuteState.Unmuted : MuteState.Muted;
         _tray.SetState(_muteState);
         
-        // Start/stop audio monitoring based on mute state and settings
-        if (SettingsManager.Current.ShowVoiceActivity)
+        // Start/stop audio monitoring based on mute state and settings (both must be enabled)
+        if (SettingsManager.Current.ShowVoiceActivity && SettingsManager.Current.EnableAudioMonitoring)
         {
             if (_muteState == MuteState.Unmuted)
                 _audio.Start();
@@ -1160,6 +1165,7 @@ public partial class MainWindow : Window
     {
         if (!_isInVoiceChannel) return; // Ignore if not in voice
         if (!SettingsManager.Current.ShowVoiceActivity) return; // Ignore if disabled
+        if (!SettingsManager.Current.EnableAudioMonitoring) return; // Ignore if audio monitoring disabled
         
         Dispatcher.Invoke(() =>
         {

@@ -149,13 +149,20 @@ public partial class App : System.Windows.Application
         _performanceMonitorTimer?.Dispose();
         _performanceMonitorTimer = null;
 
+        // Only start monitoring if performance limits are actually enabled
         if (!PerformanceManager.RequiresMonitoring())
+        {
+            System.Diagnostics.Debug.WriteLine("[Cordex] Performance monitoring disabled - no limits active");
             return;
+        }
 
         var interval = PerformanceManager.GetMonitoringInterval();
+        System.Diagnostics.Debug.WriteLine($"[Cordex] Performance monitoring enabled with {interval.TotalSeconds}s interval");
+        
         _performanceMonitorTimer = new System.Threading.Timer(
             _ =>
             {
+                // Skip if already running to prevent overlapping executions
                 if (Interlocked.Exchange(ref _performanceMonitorRunning, 1) == 1)
                     return;
 

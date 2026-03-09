@@ -48,6 +48,7 @@ public class AppSettings
     // Voice & Audio
     public bool AutomaticallyMute     { get; set; } = false;
     public bool ShowVoiceActivity     { get; set; } = true;
+    public bool EnableAudioMonitoring { get; set; } = false;
     public int  VoiceActivityThreshold { get; set; } = 50;
     
     // Notifications

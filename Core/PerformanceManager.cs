@@ -52,9 +52,11 @@ public static class PerformanceManager
     public static TimeSpan GetMonitoringInterval()
     {
         var settings = SettingsManager.Current;
+        // Use 60 second interval when performance limits are enabled
+        // Use 30 second interval for CPU-specific monitoring
         return settings.MaxCpuPercent < 100
-            ? TimeSpan.FromSeconds(5)
-            : TimeSpan.FromSeconds(15);
+            ? TimeSpan.FromSeconds(30)
+            : TimeSpan.FromSeconds(60);
     }
 
     public static void ApplyPerformanceSettings()
@@ -187,6 +189,12 @@ public static class PerformanceManager
     {
         try
         {
+            // Don't scan at all if performance limits are disabled
+            if (!SettingsManager.Current.EnablePerformanceLimits)
+            {
+                return new List<Process>();
+            }
+
             // Clean up exited processes
             _cachedCefProcesses.RemoveAll(p => 
             {
@@ -194,8 +202,8 @@ public static class PerformanceManager
                 catch { return true; }
             });
 
-            // Rescan every 10 seconds or if we have no processes
-            if (_cachedCefProcesses.Count == 0 || (DateTime.Now - _lastProcessScan).TotalSeconds > 10)
+            // Rescan every 60 seconds or if we have no processes
+            if (_cachedCefProcesses.Count == 0 || (DateTime.Now - _lastProcessScan).TotalSeconds > 60)
             {
                 var mainProcess = Process.GetCurrentProcess();
                 var childIds = ProcessHelper.GetChildProcessIds(mainProcess.Id);
@@ -311,9 +319,8 @@ public static class PerformanceManager
                 long targetTotalBytes = settings.MaxRamMB * 1024L * 1024L;
                 long targetPerProcessBytes = targetTotalBytes / processCount;
 
-                GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, true, true);
-                GC.WaitForPendingFinalizers();
-                GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, true, true);
+                // Only do a single optimized GC pass instead of aggressive triple collection
+                GC.Collect(2, GCCollectionMode.Optimized, false, false);
 
                 SetProcessWorkingSetSize(mainProcess.Handle, new IntPtr(1024 * 1024), new IntPtr(targetPerProcessBytes));
 

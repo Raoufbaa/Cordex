@@ -66,6 +66,7 @@ public partial class SettingsWindow : FluentWindow
 
         // Load voice & audio
         ToggleShowVoiceActivity.IsChecked = s.ShowVoiceActivity;
+        ToggleEnableAudioMonitoring.IsChecked = s.EnableAudioMonitoring;
         ToggleAutoMute.IsChecked          = s.AutomaticallyMute;
         SliderVoiceThreshold.Value        = s.VoiceActivityThreshold;
         TxtVoiceThreshold.Text            = $"{s.VoiceActivityThreshold}%";
@@ -320,6 +321,7 @@ public partial class SettingsWindow : FluentWindow
 
         // Save voice & audio
         s.ShowVoiceActivity      = ToggleShowVoiceActivity.IsChecked == true;
+        s.EnableAudioMonitoring  = ToggleEnableAudioMonitoring.IsChecked == true;
         s.AutomaticallyMute      = ToggleAutoMute.IsChecked == true;
         s.VoiceActivityThreshold = (int)SliderVoiceThreshold.Value;
 

@@ -11,7 +11,7 @@ public class AudioMonitor : IDisposable
     private IMMDevice? _device;
     private IAudioMeterInformation? _meterInfo;
     
-    private const int CheckIntervalMs = 100;
+    private const int CheckIntervalMs = 150; // Reduced from 100ms to 150ms for better CPU usage
     private const int TalkingDebounceMs = 200;
     
     public event Action<bool>? VoiceActivityChanged;
