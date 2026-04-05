@@ -8,7 +8,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>Cordex</RootNamespace>
     <AssemblyTitle>Cordex</AssemblyTitle>
-    <Version>1.1.24</Version>
+    <Version>1.1.25</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -30,6 +30,17 @@
     <PackageReference Include="WPF-UI"               Version="4.0.0"    />
     <PackageReference Include="System.Management"    Version="8.0.0"    />
   </ItemGroup>
+
+  <PropertyGroup>
+    <CefSharpAnyCpuSupport>true</CefSharpAnyCpuSupport>
+  </PropertyGroup>
+
+  <Target Name="CopyCefSharpFiles" AfterTargets="AfterBuild">
+    <ItemGroup>
+      <CefSharpFiles Include="$(OutDir)runtimes\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(CefSharpFiles)" DestinationFolder="$(OutDir)%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
 
   <ItemGroup>
     <Resource Include="Assets\app.ico" />
