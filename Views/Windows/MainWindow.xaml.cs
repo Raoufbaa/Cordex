@@ -131,6 +131,7 @@ public partial class MainWindow : Window
         Browser.MenuHandler     = new NoContextMenuHandler();
         Browser.PermissionHandler = new MediaPermissionHandler();
         Browser.LifeSpanHandler = new ScreenShareLifeSpanHandler();
+        Browser.DownloadHandler  = new DiscordDownloadHandler();
         Browser.BrowserSettings = new BrowserSettings { WindowlessFrameRate = 60 };
         Browser.Address         = "https://discord.com/app";
         Browser.JavascriptMessageReceived += OnJavascriptMessageReceived;
@@ -309,9 +310,16 @@ public partial class MainWindow : Window
         else
         {
             settings.CefCommandLineArgs.Add("disable-gpu", "1");
-            settings.CefCommandLineArgs.Add("disable-gpu-compositing", "1");
+            // NOTE: do NOT add disable-gpu-compositing — that kills the compositor thread
+            // and causes all inline images to render as black boxes.
+            // disable-gpu alone correctly switches to CPU rasterization while
+            // keeping the compositor alive to blend image tiles onto the window.
             settings.CefCommandLineArgs.Add("disable-accelerated-video-decode", "1");
         }
+
+        // Force a consistent sRGB colour profile — mismatched ICC profiles are a
+        // secondary cause of black images on multi-monitor / HDR setups.
+        settings.CefCommandLineArgs.Add("force-color-profile", "srgb");
 
         // Allow Chromium to throttle background tabs/processes if user wants reduced background activity
         if (SettingsManager.Current.ReduceBackgroundActivity)
@@ -340,6 +348,7 @@ public partial class MainWindow : Window
         settings.CefCommandLineArgs.Add("enable-zero-copy", "1");                    // Reduces CPU usage during rasterization (works well with hardware accel)
         settings.CefCommandLineArgs.Add("disable-component-update", "1");            // Stops background component updates
         settings.CefCommandLineArgs.Add("disable-features", "WebRtcHideLocalIpsWithMdns,InterestFeedContentSuggestions,BlinkGenPropertyTrees,SafeBrowsing"); // Combine all disable-features here
+        settings.CefCommandLineArgs.Add("enable-features",  "AudioWorkletThreadRealtimePriority,WebAssemblySimd,WebAssemblyThreads"); // Required for Discord noise cancellation (Krisp WASM)
         settings.CefCommandLineArgs.Add("disable-logging", "1");
         settings.CefCommandLineArgs.Add("disable-metrics", "1");
         settings.CefCommandLineArgs.Add("disable-metrics-reporter", "1");
@@ -468,6 +477,9 @@ public partial class MainWindow : Window
             //   from the previous session remain locked, so the next DTLS handshake hangs.
             // fixes frozen WebRTC instances where ICE connectivity hangs forever
             Dispatcher.Invoke(InjectWebRtcRecoveryScript);
+
+            // Inject image watchdog: detects images that decoded to 0×0 (black) and reloads them
+            Dispatcher.Invoke(InjectImageWatchdog);
 
             // Inject voice state observer to replace C# polling
             Dispatcher.Invoke(InjectVoiceStateObserver);
@@ -761,11 +773,13 @@ public partial class MainWindow : Window
         // If screen share is already active, stop the previous stream first
         if (_isScreenShareActive && _currentStream) {
             console.log('[Cordex] Stopping previous screen share stream before starting new one');
+            const hadLiveTracks = _currentStream.getTracks().some(t => t.readyState === 'live');
             _currentStream.getTracks().forEach(track => track.stop());
             _currentStream = null;
             _isScreenShareActive = false;
-            // Wait a bit for cleanup
-            await new Promise(resolve => setTimeout(resolve, 500));
+            window.__cordexIsScreenSharing = false;
+            // Only delay if tracks were actually live (avoids unnecessary wait on re-stream)
+            if (hadLiveTracks) await new Promise(resolve => setTimeout(resolve, 300));
         }
         
         try {
@@ -792,13 +806,22 @@ public partial class MainWindow : Window
             
             _currentStream = stream;
             _isScreenShareActive = true;
+            window.__cordexIsScreenSharing = true;
             
-            // Monitor when stream ends
+            // Monitor when stream ends or is muted (grey stream recovery)
             stream.getTracks().forEach(track => {
                 track.addEventListener('ended', () => {
                     console.log('[Cordex] Screen share track ended');
                     _isScreenShareActive = false;
                     _currentStream = null;
+                    window.__cordexIsScreenSharing = false;
+                });
+                // Muted track = grey stream: notify Discord of the device state change
+                track.addEventListener('mute', () => {
+                    console.log('[Cordex] Screen share track muted — dispatching devicechange');
+                    if (navigator.mediaDevices) {
+                        navigator.mediaDevices.dispatchEvent(new Event('devicechange'));
+                    }
                 });
             });
             
@@ -844,35 +867,13 @@ public partial class MainWindow : Window
 
     var _actionPending   = false;
     var _reconnectCount  = 0;
-    var _isScreenSharing = false;  // Track if we're currently screen sharing
     var MAX_SOFT_RETRIES = 2;
-
-    // Track screen sharing state
-    if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-        const _origGetDisplayMedia = navigator.mediaDevices.getDisplayMedia;
-        navigator.mediaDevices.getDisplayMedia = async function() {
-            _isScreenSharing = true;
-            try {
-                const stream = await _origGetDisplayMedia.apply(this, arguments);
-                // Monitor when screen share stops
-                stream.getTracks().forEach(track => {
-                    track.addEventListener('ended', () => {
-                        _isScreenSharing = false;
-                        console.log('[Cordex] Screen share track ended');
-                    });
-                });
-                return stream;
-            } catch (error) {
-                _isScreenSharing = false;
-                throw error;
-            }
-        };
-    }
+    // Screen sharing state is tracked by InjectScreenSharePicker via window.__cordexIsScreenSharing
 
     function scheduleReload(reason) {
         if (_actionPending) return;
         // Don't reload if we're actively screen sharing
-        if (_isScreenSharing) {
+        if (window.__cordexIsScreenSharing) {
             console.warn('[Cordex] Skipping reload - screen share is active (' + reason + ')');
             return;
         }
@@ -884,7 +885,7 @@ public partial class MainWindow : Window
     function attemptSmartReconnect(reason) {
         if (_actionPending) return;
         // Don't reconnect if we're actively screen sharing
-        if (_isScreenSharing) {
+        if (window.__cordexIsScreenSharing) {
             console.warn('[Cordex] Skipping reconnect - screen share is active (' + reason + ')');
             return;
         }
@@ -943,7 +944,7 @@ public partial class MainWindow : Window
         var msg = (e && e.reason && e.reason.message) ? e.reason.message : '';
         if (msg.indexOf('getCodecSurvey') !== -1 || msg.indexOf('MediaEngine') !== -1) {
             e.preventDefault();
-            if (!_isScreenSharing) {
+            if (!window.__cordexIsScreenSharing) {
                 scheduleReload('getCodecSurvey unhandledrejection');
             } else {
                 console.warn('[Cordex] getCodecSurvey error suppressed - screen share active');
@@ -954,7 +955,7 @@ public partial class MainWindow : Window
         var msg = (e && e.message) ? e.message : '';
         if (msg.indexOf('getCodecSurvey') !== -1 || msg.indexOf('MediaEngine') !== -1) {
             e.preventDefault();
-            if (!_isScreenSharing) {
+            if (!window.__cordexIsScreenSharing) {
                 scheduleReload('getCodecSurvey error');
             } else {
                 console.warn('[Cordex] getCodecSurvey error suppressed - screen share active');
@@ -967,7 +968,7 @@ public partial class MainWindow : Window
         window.RTCPeerConnection = function(config, constraints) {
             var pc  = new _OrigRTCPeerConnection(config, constraints);
             var _iceTimeout   = null;
-            var ICE_TIMEOUT_MS = 18000;
+            var ICE_TIMEOUT_MS = 12000; // Reduced from 18s for faster DTLS hang recovery
 
             var _origCreateOffer    = pc.createOffer.bind(pc);
             var _offerTimer         = null;
@@ -1043,6 +1044,57 @@ public partial class MainWindow : Window
             }})();
         ";
         
+        ExecuteScript(script);
+    }
+
+    private void InjectImageWatchdog()
+    {
+        const string script = @"
+(function() {
+    if (window.__cordexImgWatchdog) return;
+    window.__cordexImgWatchdog = true;
+
+    // Force-reload any <img> whose src loaded but rendered with zero natural size
+    // (symptom of a black image caused by a dropped compositor surface)
+    function fixBlackImages(root) {
+        (root || document).querySelectorAll('img[src]').forEach(function(img) {
+            if (!img.complete) return;          // still loading — leave it alone
+            if (img.naturalWidth > 0) return;   // rendered fine
+            if (!img.src || img.src === window.location.href) return;
+            // Recycle the src to trigger a fresh decode
+            var s = img.src;
+            img.src = '';
+            img.src = s;
+        });
+    }
+
+    // Run once on inject (catches images already in DOM)
+    setTimeout(function() { fixBlackImages(document); }, 2000);
+
+    // Watch for new images added by React
+    var obs = new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+            m.addedNodes.forEach(function(node) {
+                if (node.nodeType !== 1) return;
+                if (node.tagName === 'IMG') {
+                    node.addEventListener('load', function() {
+                        if (node.naturalWidth === 0) {
+                            var s = node.src; node.src = ''; node.src = s;
+                        }
+                    }, { once: true });
+                } else {
+                    node.querySelectorAll && node.querySelectorAll('img[src]').forEach(function(img) {
+                        if (img.complete && img.naturalWidth === 0 && img.src) {
+                            var s = img.src; img.src = ''; img.src = s;
+                        }
+                    });
+                }
+            });
+        });
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+})();
+";
         ExecuteScript(script);
     }
 
@@ -1350,16 +1402,74 @@ public class ScreenShareLifeSpanHandler : CefSharp.Handler.LifeSpanHandler
         bool userGesture, IPopupFeatures popupFeatures, IWindowInfo windowInfo,
         IBrowserSettings browserSettings, ref bool noJavascriptAccess, out IWebBrowser? newBrowser)
     {
-        // Allow popups for screen picker (chrome://webrtc-internals or picker dialogs)
-        if (targetUrl.Contains("webrtc") || targetUrl.Contains("picker") || targetUrl.Contains("chrome://"))
-        {
-            newBrowser = null;
-            return false; // Let CEF handle it
-        }
-        
         newBrowser = null;
-        return base.OnBeforePopup(chromiumWebBrowser, browser, frame, targetUrl, targetFrameName,
-            targetDisposition, userGesture, popupFeatures, windowInfo, browserSettings,
-            ref noJavascriptAccess, out newBrowser);
+
+        // Allow CEF-internal URLs (DevTools, chrome://, etc.)
+        if (string.IsNullOrEmpty(targetUrl) ||
+            targetUrl.StartsWith("chrome://") ||
+            targetUrl.StartsWith("devtools://") ||
+            targetUrl.StartsWith("about:"))
+        {
+            return false; // Let CEF handle these
+        }
+
+        // For all http/https popups (images, downloads, external links, Discord lightboxes)
+        // open in the system default browser — avoids blank/black CEF popup windows
+        if (targetUrl.StartsWith("http://") || targetUrl.StartsWith("https://"))
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName        = targetUrl,
+                    UseShellExecute = true
+                });
+            }
+            catch { }
+        }
+
+        return true; // Block the CEF popup
+    }
+}
+
+public class DiscordDownloadHandler : CefSharp.Handler.DownloadHandler
+{
+    protected override void OnBeforeDownload(
+        IWebBrowser chromiumWebBrowser, IBrowser browser,
+        DownloadItem downloadItem, IBeforeDownloadCallback callback)
+    {
+        if (callback.IsDisposed) return;
+
+        // Show a native SaveFileDialog on the UI thread
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+        {
+            var suggestedName = downloadItem.SuggestedFileName ?? "download";
+            var ext = System.IO.Path.GetExtension(suggestedName).TrimStart('.').ToLowerInvariant();
+
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                FileName = suggestedName,
+                Title    = "Save File"
+            };
+
+            if (!string.IsNullOrEmpty(ext))
+                dlg.Filter = $"{ext.ToUpperInvariant()} files (*.{ext})|*.{ext}|All files (*.*)|*.*";
+            else
+                dlg.Filter = "All files (*.*)|*.*";
+
+            using (callback)
+            {
+                if (dlg.ShowDialog() == true)
+                    callback.Continue(dlg.FileName, showDialog: false);
+                // If user cancels: callback disposed without Continue → download cancelled
+            }
+        });
+    }
+
+    protected override void OnDownloadUpdated(
+        IWebBrowser chromiumWebBrowser, IBrowser browser,
+        DownloadItem downloadItem, IDownloadItemCallback callback)
+    {
+        // Let CEF track progress normally
     }
 }
