@@ -288,16 +288,20 @@ public partial class MainWindow : Window
 
         settings.CefCommandLineArgs.Add("force-color-profile", "srgb");
 
+        // ALWAYS disable timer throttling — WebRTC voice keepalives and DTLS
+        // heartbeats MUST fire on schedule even when the window is minimized
+        // or occluded, otherwise connections stall at DTLS_CONNECTING.
+        settings.CefCommandLineArgs.Add("disable-background-timer-throttling",    "1");
+        settings.CefCommandLineArgs.Add("disable-backgrounding-occluded-windows", "1");
+
         if (SettingsManager.Current.ReduceBackgroundActivity)
         {
             settings.CefCommandLineArgs.Add("enable-ipc-flooding-protection", "1");
         }
         else
         {
-            settings.CefCommandLineArgs.Add("disable-renderer-backgrounding",         "1");
-            settings.CefCommandLineArgs.Add("disable-background-timer-throttling",    "1");
-            settings.CefCommandLineArgs.Add("disable-backgrounding-occluded-windows", "1");
-            settings.CefCommandLineArgs.Add("disable-ipc-flooding-protection",        "1");
+            settings.CefCommandLineArgs.Add("disable-renderer-backgrounding",  "1");
+            settings.CefCommandLineArgs.Add("disable-ipc-flooding-protection", "1");
         }
 
         settings.CefCommandLineArgs.Add("enable-quic",               "1");
@@ -606,79 +610,209 @@ public partial class MainWindow : Window
     if (window.__cordexWebRtcRecovery) return;
     window.__cordexWebRtcRecovery = true;
 
-    var _pending = false, _retries = 0, MAX = 2;
+    var _pending = false, _retries = 0, MAX_RETRIES = 3;
+    var ICE_TIMEOUT  = 6000;   // 6 s — ICE checking phase
+    var DTLS_TIMEOUT = 10000;  // 10 s — DTLS handshake after ICE resolves
+    var DISC_TIMEOUT = 5000;   // 5 s — disconnected-state grace period
 
-    function hardReload(r) {
-        if (_pending || window.__cordexIsScreenSharing) return;
-        _pending = true;
-        setTimeout(() => location.reload(), 800);
-    }
+    /* ═══════════════════════════════════════════════════════════
+       Layer 0 — Pre-generate DTLS certificate
+       Eliminates an on-the-fly ECDSA key-gen that can stall
+       the DTLS handshake when the CPU is under load.
+       ═══════════════════════════════════════════════════════════ */
+    var _pregenCert = null;
+    try {
+        var _OrigPC = window.RTCPeerConnection;
+        if (_OrigPC && _OrigPC.generateCertificate) {
+            _OrigPC.generateCertificate({ name: 'ECDSA', namedCurve: 'P-256' })
+                .then(function(c) { _pregenCert = c; })
+                .catch(function() {});
+        }
+    } catch(e) {}
 
-    function reconnect(r) {
+    /* ═══════════════════════════════════════════════════════════
+       Reconnect / recovery logic
+       ═══════════════════════════════════════════════════════════ */
+    function reconnect(reason) {
         if (_pending || window.__cordexIsScreenSharing) return;
         _pending = true; _retries++;
-        if (_retries > MAX) { setTimeout(() => location.reload(), 500); return; }
+        console.log('[Cordex] WebRTC recovery: ' + reason + ' (attempt ' + _retries + '/' + MAX_RETRIES + ')');
+        if (_retries > MAX_RETRIES) {
+            console.log('[Cordex] Max retries exceeded — reloading page');
+            setTimeout(function() { location.reload(); }, 300);
+            return;
+        }
         var path = location.pathname;
         setTimeout(function() {
             var btn = document.querySelector('[aria-label=""Reconnect""]') ||
                       document.querySelector('[aria-label=""Try Again""]');
-            if (btn) { btn.click(); setTimeout(() => _pending = false, 8000); return; }
+            if (btn) { btn.click(); setTimeout(function(){ _pending=false; }, 4000); return; }
             var dc = document.querySelector('[aria-label=""Disconnect""]');
             if (dc) {
                 dc.click();
                 setTimeout(function() {
-                    try { history.pushState({}, '', path); dispatchEvent(new PopStateEvent('popstate',{state:{}})); } catch(e){}
+                    try { history.pushState({},'',path); dispatchEvent(new PopStateEvent('popstate',{state:{}})); } catch(e){}
                     setTimeout(function() {
                         var jn = document.querySelector('[aria-label=""Join Voice Channel""]') ||
                                  document.querySelector('[class*=""joinButton""]');
                         if (jn) jn.click();
-                        setTimeout(() => _pending = false, 8000);
-                    }, 1500);
-                }, 1500);
-            } else location.reload();
-        }, 800);
+                        setTimeout(function(){ _pending=false; }, 4000);
+                    }, 1200);
+                }, 1000);
+                return;
+            }
+            _pending = false;
+            setTimeout(function() { location.reload(); }, 300);
+        }, 400);
     }
 
+    /* ═══════════════════════════════════════════════════════════
+       Layer 1 — RTCPeerConnection patch
+       Monitors native ICE + DTLS states with separate timers.
+       ═══════════════════════════════════════════════════════════ */
     var _Orig = window.RTCPeerConnection;
-    if (_Orig) {
-        window.RTCPeerConnection = function(cfg, con) {
-            var pc = new _Orig(cfg, con), _iceT = null;
-            var _origOffer = pc.createOffer.bind(pc), _oT = null, _res = null, _rej = null;
-            pc.createOffer = function(a, b, c) {
-                var o = typeof a === 'object' && a ? a : (c || {});
-                if (typeof a === 'function') return _origOffer(a, b, o);
-                return new Promise(function(rs, rj) {
-                    if (_oT) { clearTimeout(_oT); if (_rej) _rej(new DOMException('debounced','InvalidStateError')); }
-                    _res = rs; _rej = rj;
-                    _oT = setTimeout(function() { _oT = _res = _rej = null; _origOffer(o).then(rs, rj); }, 50);
-                });
-            };
-            function clrIce() { if (_iceT) { clearTimeout(_iceT); _iceT = null; } }
-            function strtIce(l) {
-                clrIce();
-                _iceT = setTimeout(function() {
-                    if (pc.iceConnectionState==='checking'||pc.iceConnectionState==='new'||
-                        pc.connectionState==='connecting')
-                        reconnect('ICE stuck 4.5s ('+l+')');
-                }, 4500);
-            }
-            pc.addEventListener('connectionstatechange', function() {
-                var s = pc.connectionState;
-                if      (s==='failed'||s==='disconnected')  { clrIce(); reconnect('conn='+s); }
-                else if (s==='connecting')                  strtIce('conn');
-                else if (s==='connected'||s==='closed')     { clrIce(); _retries=0; }
-            });
-            pc.addEventListener('iceconnectionstatechange', function() {
+    if (!_Orig) return;
+
+    window.RTCPeerConnection = function(cfg, con) {
+        /* Inject pre-generated DTLS cert to speed up handshake */
+        if (_pregenCert) {
+            cfg = Object.assign({}, cfg || {});
+            if (!cfg.certificates || cfg.certificates.length === 0)
+                cfg.certificates = [_pregenCert];
+        }
+
+        var pc = new _Orig(cfg, con);
+        var _iceT = null, _dtlsT = null, _discT = null;
+        var _iceOk = false;
+
+        function clr() {
+            if (_iceT)  { clearTimeout(_iceT);  _iceT  = null; }
+            if (_dtlsT) { clearTimeout(_dtlsT); _dtlsT = null; }
+            if (_discT) { clearTimeout(_discT); _discT = null; }
+        }
+
+        function startIce(label) {
+            if (_iceT) clearTimeout(_iceT);
+            _iceOk = false;
+            _iceT = setTimeout(function() {
+                _iceT = null;
                 var s = pc.iceConnectionState;
-                if      (s==='failed')                                   { clrIce(); reconnect('ice=failed'); }
-                else if (s==='disconnected')                             { strtIce('ice_disc'); } // Let it try to reconnect for 4.5s before forcing DOM reload
-                else if (s==='checking')                                 strtIce('ice');
-                else if (s==='connected'||s==='completed'||s==='closed') clrIce();
-            });
-            return pc;
-        };
-        window.RTCPeerConnection.prototype = _Orig.prototype;
-    }
+                if (s==='checking' || s==='new')
+                    reconnect('ICE stuck '+ICE_TIMEOUT+'ms ('+label+', ice='+s+')');
+            }, ICE_TIMEOUT);
+        }
+
+        function startDtls(label) {
+            if (_dtlsT) clearTimeout(_dtlsT);
+            _dtlsT = setTimeout(function() {
+                _dtlsT = null;
+                if (pc.connectionState==='connecting')
+                    reconnect('DTLS stuck '+DTLS_TIMEOUT+'ms ('+label+')');
+            }, DTLS_TIMEOUT);
+        }
+
+        function startDisc(label) {
+            if (_discT) clearTimeout(_discT);
+            _discT = setTimeout(function() {
+                _discT = null;
+                var s = pc.iceConnectionState;
+                var c = pc.connectionState;
+                if (s==='disconnected' || c==='disconnected')
+                    reconnect('Disconnected '+DISC_TIMEOUT+'ms ('+label+')');
+            }, DISC_TIMEOUT);
+        }
+
+        pc.addEventListener('iceconnectionstatechange', function() {
+            var s = pc.iceConnectionState;
+            if (s==='checking') {
+                startIce('ice');
+            } else if (s==='connected' || s==='completed') {
+                _iceOk = true;
+                if (_iceT) { clearTimeout(_iceT); _iceT = null; }
+                if (_discT){ clearTimeout(_discT);_discT= null; }
+                if (pc.connectionState==='connecting') startDtls('post-ice');
+            } else if (s==='failed') {
+                clr(); reconnect('ice=failed');
+            } else if (s==='disconnected') {
+                if (_iceT) { clearTimeout(_iceT); _iceT = null; }
+                startDisc('ice-disc');
+            } else if (s==='closed') {
+                clr();
+            }
+        });
+
+        pc.addEventListener('connectionstatechange', function() {
+            var s = pc.connectionState;
+            if (s==='connected') {
+                clr(); _retries = 0; _iceOk = true;
+            } else if (s==='connecting' && _iceOk) {
+                startDtls('conn-renego');
+            } else if (s==='failed') {
+                clr(); reconnect('conn=failed');
+            } else if (s==='disconnected') {
+                startDisc('conn-disc');
+            } else if (s==='closed') {
+                clr();
+            }
+        });
+
+        return pc;
+    };
+    window.RTCPeerConnection.prototype = _Orig.prototype;
+    Object.getOwnPropertyNames(_Orig).forEach(function(k) {
+        if (k==='prototype'||k==='length'||k==='name') return;
+        try { window.RTCPeerConnection[k] = _Orig[k]; } catch(e){}
+    });
+
+    /* ═══════════════════════════════════════════════════════════
+       Layer 2 — Console-log interception
+       Discord always logs state transitions like:
+         [RTCConnection(...)] RTC connection state: X => DTLS_CONNECTING
+       This catches DTLS stalls even if Discord cached the
+       original RTCPeerConnection before our patch ran.
+       ═══════════════════════════════════════════════════════════ */
+    var _conTimer = null;
+    var _origLog = console.log;
+    console.log = function() {
+        _origLog.apply(console, arguments);
+        if (arguments.length === 0 || typeof arguments[0] !== 'string') return;
+        var m = arguments[0];
+        /* Only inspect RTC-related messages (fast prefix check) */
+        if (m.indexOf('RTC') === -1) return;
+        if (m.indexOf('RTC connection state') > -1 || m.indexOf('RTC media connection state') > -1) {
+            if (m.indexOf('DTLS_CONNECTING') > -1 || m.indexOf('ICE_CHECKING') > -1) {
+                if (!_conTimer) {
+                    _conTimer = setTimeout(function() {
+                        _conTimer = null;
+                        reconnect('console: DTLS/ICE stall ' + DTLS_TIMEOUT + 'ms');
+                    }, DTLS_TIMEOUT);
+                }
+            } else if (m.indexOf('CONNECTED') > -1) {
+                if (_conTimer) { clearTimeout(_conTimer); _conTimer = null; }
+                _retries = 0;
+            }
+        }
+    };
+    /* Also intercept console.debug in case Discord uses it */
+    var _origDbg = console.debug;
+    console.debug = function() {
+        _origDbg.apply(console, arguments);
+        if (arguments.length > 0 && typeof arguments[0] === 'string') {
+            var m = arguments[0];
+            if (m.indexOf('RTC') === -1) return;
+            if (m.indexOf('DTLS_CONNECTING') > -1 || m.indexOf('ICE_CHECKING') > -1) {
+                if (!_conTimer) {
+                    _conTimer = setTimeout(function() {
+                        _conTimer = null;
+                        reconnect('console: DTLS/ICE stall ' + DTLS_TIMEOUT + 'ms');
+                    }, DTLS_TIMEOUT);
+                }
+            } else if (m.indexOf('CONNECTED') > -1 && m.indexOf('RTC') > -1) {
+                if (_conTimer) { clearTimeout(_conTimer); _conTimer = null; }
+                _retries = 0;
+            }
+        }
+    };
 })();
 ";
         ExecuteScript(script);
