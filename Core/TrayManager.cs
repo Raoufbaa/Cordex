@@ -4,7 +4,7 @@ using WinForms = System.Windows.Forms;
 
 namespace Cordex.Core;
 
-public enum MuteState { Default, Muted, Unmuted, Talking }
+public enum MuteState { Default, Muted, Unmuted, Talking, Deafened }
 
 public class TrayManager : IDisposable
 {
@@ -14,6 +14,7 @@ public class TrayManager : IDisposable
     private readonly System.Drawing.Icon _iconMuted;
     private readonly System.Drawing.Icon _iconUnmuted;
     private readonly System.Drawing.Icon _iconTalking;
+    private readonly System.Drawing.Icon _iconDeafened;
 
     public event Action? OpenRequested;
     public event Action? MuteToggled;
@@ -25,6 +26,7 @@ public class TrayManager : IDisposable
         _iconMuted   = LoadIcon("muted.ico")   ?? System.Drawing.SystemIcons.Shield;
         _iconUnmuted = LoadIcon("unmuted.ico") ?? System.Drawing.SystemIcons.Information;
         _iconTalking = LoadIcon("talking.ico") ?? System.Drawing.SystemIcons.Exclamation;
+        _iconDeafened= LoadIcon("headphones.ico") ?? System.Drawing.SystemIcons.Question;
     }
 
     private static System.Drawing.Icon? LoadIcon(string filename)
@@ -55,6 +57,7 @@ public class TrayManager : IDisposable
             MuteState.Muted   => (_iconMuted,   "Cordex - Muted"),
             MuteState.Unmuted => (_iconUnmuted, "Cordex - Unmuted"),
             MuteState.Talking => (_iconTalking, "Cordex - Talking"),
+            MuteState.Deafened=> (_iconDeafened,"Cordex - Deafened"),
             _                 => (_iconApp,     "Cordex"),
         };
     }

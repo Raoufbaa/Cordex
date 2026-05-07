@@ -414,53 +414,45 @@ public partial class MainWindow : Window
             if (message.StartsWith("VoiceState:"))
             {
                 var parts = message.Split(':');
-                if (parts.Length >= 3)
-                    UpdateVoiceState(parts[1] == "true", parts[2] == "true");
+                if (parts.Length >= 4)
+                    UpdateVoiceState(parts[1] == "true", parts[2] == "true", parts[3] == "true");
             }
         });
     }
 
-    private void UpdateVoiceState(bool inVoice, bool isMuted)
+    private void UpdateVoiceState(bool inVoice, bool isMuted, bool isDeafened)
     {
         if (inVoice != _isInVoiceChannel)
         {
             bool wasInVoice   = _isInVoiceChannel;
             _isInVoiceChannel = inVoice;
 
-            if (!_isInVoiceChannel)
+            // Only attempt to auto-mute if transitioning INTO voice chat
+            if (_isInVoiceChannel && !wasInVoice && SettingsManager.Current.AutomaticallyMute && !isMuted)
             {
-                _muteState = MuteState.Default;
-                _tray.SetState(MuteState.Default);
-                _audio.Stop();
-            }
-            else
-            {
-                if (!wasInVoice && SettingsManager.Current.AutomaticallyMute)
-                {
-                    System.Threading.Tasks.Task.Delay(500).ContinueWith(_ =>
-                        Dispatcher.Invoke(() =>
-                        {
-                            ExecuteScript(
-                                @"(function(){var b=document.querySelector('[aria-label=""Mute""]');if(b)b.click();})();");
-                            _muteState = MuteState.Muted;
-                            _tray.SetState(MuteState.Muted);
-                            _audio.Stop();
-                        }));
-                }
-                else
-                {
-                    _muteState = isMuted ? MuteState.Muted : MuteState.Unmuted;
-                    _tray.SetState(_muteState);
-                    SyncAudio();
-                }
+                System.Threading.Tasks.Task.Delay(500).ContinueWith(_ =>
+                    Dispatcher.Invoke(() =>
+                    {
+                        ExecuteScript(@"(function(){var b=document.querySelector('[aria-label=""Mute""]');if(b)b.click();})();");
+                    }));
             }
         }
-        else if (_isInVoiceChannel)
+
+        // Properly track and display the state REGARDLESS of being in voice chat
+        var newState = isDeafened ? MuteState.Deafened : (isMuted ? MuteState.Muted : MuteState.Unmuted);
+        
+        // If we are currently talking, but discord reports we are unmuted/undeafened, we stay in Talking state
+        if (_muteState == MuteState.Talking && newState == MuteState.Unmuted && inVoice)
         {
-            _muteState = isMuted ? MuteState.Muted : MuteState.Unmuted;
-            _tray.SetState(_muteState);
-            SyncAudio();
+            // keep talking
         }
+        else
+        {
+            _muteState = newState;
+            _tray.SetState(_muteState);
+        }
+
+        if (inVoice) SyncAudio(); else _audio.Stop();
     }
 
     private void SyncAudio()
@@ -483,24 +475,33 @@ public partial class MainWindow : Window
         return;
     }
 
-    let lastInVoice = null, lastMuted = null, checkQueued = false;
+    let lastInVoice = null, lastMuted = null, lastDeaf = null, checkQueued = false;
 
     function readVoiceState() {
-        const inVoice =
-            document.querySelector('[aria-label=""Disconnect""]') !== null ||
-            document.querySelector('[aria-label=""Mute""]')       !== null ||
-            document.querySelector('[aria-label=""Unmute""]')     !== null;
-        const isMuted = document.querySelector('[aria-label=""Unmute""]') !== null;
-        return { inVoice, isMuted };
+        const panels = document.querySelector('[class*=""panels_""]') || document.querySelector('[class*=""sidebar_""]');
+        if (!panels) return null; // Discord UI hasn't rendered yet
+
+        const inVoice = document.querySelector('[aria-label=""Disconnect""]') !== null;
+        
+        const muteBtn = document.querySelector('[aria-label=""Mute""]');
+        const unmuteBtn = document.querySelector('[aria-label=""Unmute""]');
+        const isMuted = unmuteBtn !== null || (muteBtn && muteBtn.getAttribute('aria-checked') === 'true');
+
+        const deafBtn = document.querySelector('[aria-label=""Deafen""]');
+        const undeafBtn = document.querySelector('[aria-label=""Undeafen""]');
+        const isDeafened = undeafBtn !== null || (deafBtn && deafBtn.getAttribute('aria-checked') === 'true');
+
+        return { inVoice, isMuted, isDeafened };
     }
 
     function postVoiceState() {
         try {
             const s = readVoiceState();
-            if (s.inVoice !== lastInVoice || s.isMuted !== lastMuted) {
-                lastInVoice = s.inVoice; lastMuted = s.isMuted;
+            if (!s) return; // Ignore if loading
+            if (s.inVoice !== lastInVoice || s.isMuted !== lastMuted || s.isDeafened !== lastDeaf) {
+                lastInVoice = s.inVoice; lastMuted = s.isMuted; lastDeaf = s.isDeafened;
                 if (window.CefSharp && window.CefSharp.PostMessage)
-                    window.CefSharp.PostMessage('VoiceState:' + s.inVoice + ':' + s.isMuted);
+                    window.CefSharp.PostMessage('VoiceState:' + s.inVoice + ':' + s.isMuted + ':' + s.isDeafened);
             }
         } catch(e) { console.error('[Cordex] Voice observer error:', e); }
     }
@@ -518,7 +519,9 @@ public partial class MainWindow : Window
     window.addEventListener('popstate',           scheduleCheck, { passive: true });
     window.addEventListener('hashchange',         scheduleCheck, { passive: true });
     document.addEventListener('visibilitychange', scheduleCheck, { passive: true });
-    setInterval(() => { if (!document.hidden) postVoiceState(); }, 10000);
+    
+    // Check frequently (1.5s) to quickly catch network-assigned states (e.g. server mutes)
+    setInterval(() => { if (!document.hidden) postVoiceState(); }, 1500);
 
     postVoiceState();
 })();
@@ -636,22 +639,6 @@ public partial class MainWindow : Window
         }, 800);
     }
 
-    window.addEventListener('unhandledrejection', e => {
-        var m = e?.reason?.message || '';
-        if (m.includes('getCodecSurvey') || m.includes('MediaEngine')) {
-            e.preventDefault();
-            if (!window.__cordexIsScreenSharing) hardReload(m);
-        }
-    });
-
-    window.addEventListener('error', e => {
-        var m = e?.message || '';
-        if (m.includes('getCodecSurvey') || m.includes('MediaEngine')) {
-            e.preventDefault();
-            if (!window.__cordexIsScreenSharing) hardReload(m);
-        }
-    });
-
     var _Orig = window.RTCPeerConnection;
     if (_Orig) {
         window.RTCPeerConnection = function(cfg, con) {
@@ -663,7 +650,7 @@ public partial class MainWindow : Window
                 return new Promise(function(rs, rj) {
                     if (_oT) { clearTimeout(_oT); if (_rej) _rej(new DOMException('debounced','InvalidStateError')); }
                     _res = rs; _rej = rj;
-                    _oT = setTimeout(function() { _oT = _res = _rej = null; _origOffer(o).then(rs, rj); }, 400);
+                    _oT = setTimeout(function() { _oT = _res = _rej = null; _origOffer(o).then(rs, rj); }, 50);
                 });
             };
             function clrIce() { if (_iceT) { clearTimeout(_iceT); _iceT = null; } }
@@ -672,18 +659,19 @@ public partial class MainWindow : Window
                 _iceT = setTimeout(function() {
                     if (pc.iceConnectionState==='checking'||pc.iceConnectionState==='new'||
                         pc.connectionState==='connecting')
-                        reconnect('ICE stuck 12s ('+l+')');
-                }, 12000);
+                        reconnect('ICE stuck 4.5s ('+l+')');
+                }, 4500);
             }
             pc.addEventListener('connectionstatechange', function() {
                 var s = pc.connectionState;
-                if      (s==='failed')                  { clrIce(); reconnect('conn=failed'); }
-                else if (s==='connecting')              strtIce('conn');
-                else if (s==='connected'||s==='closed') { clrIce(); _retries=0; }
+                if      (s==='failed'||s==='disconnected')  { clrIce(); reconnect('conn='+s); }
+                else if (s==='connecting')                  strtIce('conn');
+                else if (s==='connected'||s==='closed')     { clrIce(); _retries=0; }
             });
             pc.addEventListener('iceconnectionstatechange', function() {
                 var s = pc.iceConnectionState;
                 if      (s==='failed')                                   { clrIce(); reconnect('ice=failed'); }
+                else if (s==='disconnected')                             { strtIce('ice_disc'); } // Let it try to reconnect for 4.5s before forcing DOM reload
                 else if (s==='checking')                                 strtIce('ice');
                 else if (s==='connected'||s==='completed'||s==='closed') clrIce();
             });
@@ -745,17 +733,17 @@ public partial class MainWindow : Window
     // ── Actions ──────────────────────────────────────────────────────────────
     private void ToggleMute()
     {
-        if (!_isInVoiceChannel) return;
         ExecuteScript(
             @"(function(){var b=document.querySelector('[aria-label=""Mute""],[aria-label=""Unmute""]');if(b)b.click();})();");
-        _muteState = _muteState == MuteState.Muted ? MuteState.Unmuted : MuteState.Muted;
-        _tray.SetState(_muteState);
-        SyncAudio();
+        // We do NOT optimistic-toggle _muteState here. 
+        // We let the JS VoiceState observer push the precise real state over.
     }
 
     private void ToggleDeafen()
-        => ExecuteScript(
+    {
+        ExecuteScript(
             @"(function(){var b=document.querySelector('[aria-label=""Deafen""],[aria-label=""Undeafen""]');if(b)b.click();})();");
+    }
 
     private void ShowApp()
     {

@@ -25,6 +25,10 @@ public class AudioMonitor : IDisposable
     {
         RefreshSettings();
         _timer = new System.Threading.Timer(CheckAudioLevel, null, Timeout.Infinite, Timeout.Infinite);
+        
+        // Pre-warm the COM Windows Audio component on startup to avoid locking out Discord
+        Start(); 
+        Stop();
     }
 
     public void RefreshSettings()
@@ -35,35 +39,57 @@ public class AudioMonitor : IDisposable
     public void Start()
     {
         if (_isRunning) return;
+        _isRunning = true;
         
-        try
+        if (_meterInfo != null)
         {
             RefreshSettings();
-            _deviceEnumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
-            
-            // Try to get default capture device
-            int hr = _deviceEnumerator.GetDefaultAudioEndpoint(EDataFlow.eCapture, ERole.eConsole, out _device);
-            
-            if (hr != 0 || _device == null) return;
-            
-            var iid = typeof(IAudioMeterInformation).GUID;
-            object? obj = null;
-            hr = _device.Activate(ref iid, 0, IntPtr.Zero, out obj);
-            
-            if (hr != 0 || obj == null) return;
-            
-            _meterInfo = obj as IAudioMeterInformation;
-            
-            if (_meterInfo == null) return;
-            
             _lastVoiceDetectedTicks = Environment.TickCount64;
-            _isRunning = true;
             _timer.Change(0, CheckIntervalMs);
+            return;
         }
-        catch
+
+        System.Threading.Tasks.Task.Run(() =>
         {
-            Cleanup();
-        }
+            try
+            {
+                var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
+                int hr = enumerator.GetDefaultAudioEndpoint(EDataFlow.eCapture, ERole.eConsole, out var device);
+                
+                if (hr != 0 || device == null) { _isRunning = false; return; }
+                
+                var iid = typeof(IAudioMeterInformation).GUID;
+                object? obj = null;
+                hr = device.Activate(ref iid, 0, IntPtr.Zero, out obj);
+                
+                if (hr != 0 || obj == null) { _isRunning = false; return; }
+                
+                var meter = obj as IAudioMeterInformation;
+                if (meter == null) { _isRunning = false; return; }
+                
+                // Ensure it wasn't stopped manually while we were loading COM objects
+                if (!_isRunning) 
+                {
+                    Marshal.ReleaseComObject(meter);
+                    Marshal.ReleaseComObject(device);
+                    Marshal.ReleaseComObject(enumerator);
+                    return;
+                }
+
+                _deviceEnumerator = enumerator;
+                _device = device;
+                _meterInfo = meter;
+
+                RefreshSettings();
+                _lastVoiceDetectedTicks = Environment.TickCount64;
+                _timer.Change(0, CheckIntervalMs);
+            }
+            catch
+            {
+                _isRunning = false;
+                Cleanup();
+            }
+        });
     }
 
     public void Stop()
@@ -77,8 +103,6 @@ public class AudioMonitor : IDisposable
             _isTalking = false;
             VoiceActivityChanged?.Invoke(false);
         }
-        
-        Cleanup();
     }
 
     private void CheckAudioLevel(object? state)
