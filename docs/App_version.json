@@ -2,12 +2,12 @@
   "DownloadUrl": "https://github.com/Raoufbaa/Cordex/releases/latest",
   "ReleaseNotes": "Bug fixes and improvements",
   "SupportedVersions": [
-    "1.1.21",
     "1.1.22",
     "1.1.23",
     "1.1.24",
     "1.1.25",
-    "1.1.26"
+    "1.1.26",
+    "1.1.27"
   ],
   "AppDisabled": false,
   "AppDisabledMessage": "The app is currently down for maintenance."

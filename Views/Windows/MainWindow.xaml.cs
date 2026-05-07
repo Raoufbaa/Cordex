@@ -11,63 +11,61 @@ namespace Cordex;
 
 public partial class MainWindow : Window
 {
-    private readonly TrayManager    _tray = new();
-    private readonly KeybindManager _keys = new();
+    private readonly TrayManager    _tray  = new();
+    private readonly KeybindManager _keys  = new();
     private readonly AudioMonitor   _audio = new();
 
     private static bool _cefInitialized;
-    private MuteState   _muteState = MuteState.Default;
-    private bool        _isExiting = false;
+    private MuteState   _muteState        = MuteState.Default;
+    private bool        _isExiting        = false;
     private bool        _isInVoiceChannel = false;
-    private bool        _discordLoaded = false;
-    
-    // Keep icon handles alive
+    private bool        _discordLoaded    = false;
+
     private System.Drawing.Icon? _bigIcon;
     private System.Drawing.Icon? _smallIcon;
-    
+
     private static readonly string IconPath = System.IO.Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, "Assets", "app.ico");
 
-    // ── Win32 constants ──────────────────────────────────────────────────────
-    private const int    WM_NCHITTEST     = 0x0084;
-    private const int    WM_GETMINMAXINFO = 0x0024;
-    private const int    WM_SETICON       = 0x0080;
-    private const int    ICON_SMALL       = 0;
-    private const int    ICON_BIG         = 1;
-    private const int    HTCAPTION        = 2;
-    private const int    HTLEFT           = 10;
-    private const int    HTRIGHT          = 11;
-    private const int    HTTOP            = 12;
-    private const int    HTTOPLEFT        = 13;
-    private const int    HTTOPRIGHT       = 14;
-    private const int    HTBOTTOM         = 15;
-    private const int    HTBOTTOMLEFT     = 16;
-    private const int    HTBOTTOMRIGHT    = 17;
-    private const int    GWL_EXSTYLE      = -20;
-    private const int    WS_EX_APPWINDOW  = 0x00040000;
-    private const int    WS_EX_TOOLWINDOW = 0x00000080;
-    private const uint   MONITOR_NEAREST  = 0x00000002;
-    private const uint   ABM_GETSTATE     = 0x00000004;
-    private const int    ABS_AUTOHIDE     = 0x00000001;
-    private const uint   SWP_NOMOVE       = 0x0002;
-    private const uint   SWP_NOSIZE       = 0x0001;
-    private const uint   SWP_NOZORDER     = 0x0004;
-    private const uint   SWP_FRAMECHANGED = 0x0020;
-    private const int    SW_HIDE          = 0;
-    private const int    SW_SHOW          = 5;
+    private const int    WM_NCHITTEST      = 0x0084;
+    private const int    WM_GETMINMAXINFO  = 0x0024;
+    private const int    WM_SETICON        = 0x0080;
+    private const int    ICON_SMALL        = 0;
+    private const int    ICON_BIG          = 1;
+    private const int    HTCAPTION         = 2;
+    private const int    HTLEFT            = 10;
+    private const int    HTRIGHT           = 11;
+    private const int    HTTOP             = 12;
+    private const int    HTTOPLEFT         = 13;
+    private const int    HTTOPRIGHT        = 14;
+    private const int    HTBOTTOM          = 15;
+    private const int    HTBOTTOMLEFT      = 16;
+    private const int    HTBOTTOMRIGHT     = 17;
+    private const int    GWL_EXSTYLE       = -20;
+    private const int    WS_EX_APPWINDOW   = 0x00040000;
+    private const int    WS_EX_TOOLWINDOW  = 0x00000080;
+    private const uint   MONITOR_NEAREST   = 0x00000002;
+    private const uint   ABM_GETSTATE      = 0x00000004;
+    private const int    ABS_AUTOHIDE      = 0x00000001;
+    private const uint   SWP_NOMOVE        = 0x0002;
+    private const uint   SWP_NOSIZE        = 0x0001;
+    private const uint   SWP_NOZORDER      = 0x0004;
+    private const uint   SWP_FRAMECHANGED  = 0x0020;
+    private const int    SW_HIDE           = 0;
+    private const int    SW_SHOW           = 5;
     private const uint   DWMWA_WINDOW_CORNER_PREFERENCE = 33;
-    private const int    DWMWCP_ROUND     = 2;
+    private const int    DWMWCP_ROUND      = 2;
     private const int    DWMWCP_DONOTROUND = 1;
 
-    private const double ResizeBorder = 8;
-    private const double DragHeight   = 36;
-    private const double LeftReserve  = 130;
-    private const double RightReserve = 80;
+    private const double ResizeBorder  = 8;
+    private const double DragHeight    = 36;
+    private const double LeftReserve   = 130;
+    private const double RightReserve  = 80;
 
     private static readonly System.Windows.Media.SolidColorBrush BorderColor =
-        new((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#3A3C40"));
+        new((System.Windows.Media.Color)System.Windows.Media.ColorConverter
+            .ConvertFromString("#3A3C40"));
 
-    // ── Win32 structs ────────────────────────────────────────────────────────
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT { public int X; public int Y; }
 
@@ -100,7 +98,6 @@ public partial class MainWindow : Window
         public IntPtr lParam;
     }
 
-    // ── P/Invoke ─────────────────────────────────────────────────────────────
     [DllImport("user32.dll")]  private static extern int    GetWindowLong        (IntPtr hwnd, int idx);
     [DllImport("user32.dll")]  private static extern int    SetWindowLong        (IntPtr hwnd, int idx, int val);
     [DllImport("user32.dll")]  private static extern IntPtr MonitorFromWindow    (IntPtr hwnd, uint flags);
@@ -121,21 +118,19 @@ public partial class MainWindow : Window
         Width  = area.Width  * 0.85;
         Height = area.Height * 0.85;
 
-        // Load icon early
         if (System.IO.File.Exists(IconPath))
-        {
-            Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri(IconPath, UriKind.Absolute));
-        }
+            Icon = new System.Windows.Media.Imaging.BitmapImage(
+                new Uri(IconPath, UriKind.Absolute));
 
-        Browser.RequestHandler  = new DiscordRequestHandler();
-        Browser.MenuHandler     = new NoContextMenuHandler();
+        Browser.RequestHandler    = new DiscordRequestHandler();
+        Browser.MenuHandler       = new NoContextMenuHandler();
         Browser.PermissionHandler = new MediaPermissionHandler();
-        Browser.LifeSpanHandler = new ScreenShareLifeSpanHandler();
-        Browser.DownloadHandler  = new DiscordDownloadHandler();
-        Browser.BrowserSettings = new BrowserSettings { WindowlessFrameRate = 60 };
-        Browser.Address         = "https://discord.com/app";
+        Browser.LifeSpanHandler   = new DiscordLifeSpanHandler();
+        Browser.DownloadHandler   = new DiscordDownloadHandler();
+        Browser.BrowserSettings   = new BrowserSettings { WindowlessFrameRate = 60 };
+        Browser.Address           = "https://discord.com/app";
         Browser.JavascriptMessageReceived += OnJavascriptMessageReceived;
-        Browser.LoadingStateChanged += OnBrowserLoadingStateChanged;
+        Browser.LoadingStateChanged       += OnBrowserLoadingStateChanged;
 
         Loaded            += OnWindowLoaded;
         SourceInitialized += OnSourceInitialized;
@@ -147,7 +142,6 @@ public partial class MainWindow : Window
     {
         var hwnd = new WindowInteropHelper(this).Handle;
 
-        // Load icon FIRST before any window style changes
         try
         {
             if (System.IO.File.Exists(IconPath))
@@ -160,17 +154,14 @@ public partial class MainWindow : Window
         }
         catch { }
 
-        // Set extended window style to force taskbar button and app classification
         int exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-        exStyle |= WS_EX_APPWINDOW;   // Force taskbar button and Task Manager "Apps" classification
-        exStyle &= ~WS_EX_TOOLWINDOW; // Remove tool window flag
+        exStyle |=  WS_EX_APPWINDOW;
+        exStyle &= ~WS_EX_TOOLWINDOW;
         SetWindowLong(hwnd, GWL_EXSTYLE, exStyle);
-        
-        // Force window frame to update
-        SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0, 
+
+        SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
 
-        // Windows 11 rounded corners
         int pref = DWMWCP_ROUND;
         DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref pref, sizeof(int));
 
@@ -197,9 +188,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam,
+                           ref bool handled)
     {
-        // ── Maximized bounds + auto-hide taskbar ──────────────────────────
         if (msg == WM_GETMINMAXINFO)
         {
             var mmi     = Marshal.PtrToStructure<MINMAXINFO>(lParam);
@@ -221,14 +212,13 @@ public partial class MainWindow : Window
             return IntPtr.Zero;
         }
 
-        // ── Resize handles + drag zone ────────────────────────────────────
         if (msg == WM_NCHITTEST)
         {
             int sx = unchecked((short)(lParam.ToInt64() & 0xFFFF));
             int sy = unchecked((short)((lParam.ToInt64() >> 16) & 0xFFFF));
 
-            var pt = PointFromScreen(new System.Windows.Point(sx, sy));
-            double x = pt.X, y = pt.Y, w = ActualWidth, h = ActualHeight;
+            var    pt = PointFromScreen(new System.Windows.Point(sx, sy));
+            double x  = pt.X, y = pt.Y, w = ActualWidth, h = ActualHeight;
 
             bool L = x < ResizeBorder, R = x > w - ResizeBorder;
             bool T = y < ResizeBorder, B = y > h - ResizeBorder;
@@ -265,164 +255,112 @@ public partial class MainWindow : Window
         {
             CachePath   = SessionManager.CacheDirectory,
             LogSeverity = LogSeverity.Disable,
-            UserAgent   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            UserAgent   =
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/120.0.0.0 Safari/537.36",
             WindowlessRenderingEnabled = false
         };
 
-        // Check if hardware acceleration is enabled
         bool hwAccel = SettingsManager.Current.HardwareAcceleration;
 
-        // Essential media stream flags
-        settings.CefCommandLineArgs.Add("enable-media-stream", "1");
-        settings.CefCommandLineArgs.Add("enable-usermedia-screen-capturing", "1");
-        // Enable legacy screen capture API for CEF (chromeMediaSource)
-        settings.CefCommandLineArgs.Add("enable-usermedia-screen-capture", "1");
-        // Use fake UI to auto-approve screen capture (we show our own picker)
-        settings.CefCommandLineArgs.Add("use-fake-ui-for-media-stream", "1");
-        // Auto-select the entire screen as the default source
+        settings.CefCommandLineArgs.Add("enable-media-stream",                "1");
+        settings.CefCommandLineArgs.Add("enable-usermedia-screen-capturing",  "1");
+        settings.CefCommandLineArgs.Add("enable-usermedia-screen-capture",    "1");
+        settings.CefCommandLineArgs.Add("use-fake-ui-for-media-stream",       "1");
         settings.CefCommandLineArgs.Add("auto-select-desktop-capture-source", "Entire screen");
-        settings.CefCommandLineArgs.Add("autoplay-policy", "no-user-gesture-required");
-
-        // NOTE: WebRTC IP handling (all_interfaces, multiple_routes, nonproxied_udp)
-        // must be set as RequestContext preferences — NOT command-line args.
-        // They are applied after CEF init in ApplyWebRtcRequestContextPreferences().
-        // Passing them as CLI args has no effect in CefSharp and can cause conflicts.
+        settings.CefCommandLineArgs.Add("autoplay-policy",                    "no-user-gesture-required");
         settings.CefCommandLineArgs.Add("enforce-webrtc-ip-permission-check", "0");
+        settings.CefCommandLineArgs.Add("no-sandbox",                         "1");
 
-        // Disable mDNS obfuscation of local IPs in ICE candidates.
-        // Chrome's WebRtcHideLocalIpsWithMdns feature replaces real IPs with .local hostnames.
-        // CefSharp has NO mDNS resolver, so these candidates are unresolvable — ICE silently
-        // hangs at 'checking' forever (never reaches 'failed', bypassing our error handlers).
-        // (Combined with other disable-features below)
-
-        // Remove the renderer process sandbox so CefSharp's renderer can create UDP sockets
-        // freely for WebRTC ICE connectivity checks. Without this, the sandbox may prevent
-        // the renderer from binding UDP ports, causing ICE to silently fail on some systems.
-        settings.CefCommandLineArgs.Add("no-sandbox", "1");
-
-        // Performance settings based on hardware acceleration
         if (hwAccel)
         {
-            settings.CefCommandLineArgs.Add("enable-gpu", "1");
-            settings.CefCommandLineArgs.Add("enable-gpu-rasterization", "1");
+            settings.CefCommandLineArgs.Add("enable-gpu",                      "1");
+            settings.CefCommandLineArgs.Add("enable-gpu-rasterization",        "1");
             settings.CefCommandLineArgs.Add("enable-accelerated-video-decode", "1");
+            settings.CefCommandLineArgs.Add("enable-zero-copy",                "1");
         }
         else
         {
-            settings.CefCommandLineArgs.Add("disable-gpu", "1");
-            // NOTE: do NOT add disable-gpu-compositing — that kills the compositor thread
-            // and causes all inline images to render as black boxes.
-            // disable-gpu alone correctly switches to CPU rasterization while
-            // keeping the compositor alive to blend image tiles onto the window.
+            settings.CefCommandLineArgs.Add("use-gl",                           "swiftshader");
             settings.CefCommandLineArgs.Add("disable-accelerated-video-decode", "1");
         }
 
-        // Force a consistent sRGB colour profile — mismatched ICC profiles are a
-        // secondary cause of black images on multi-monitor / HDR setups.
         settings.CefCommandLineArgs.Add("force-color-profile", "srgb");
 
-        // Allow Chromium to throttle background tabs/processes if user wants reduced background activity
         if (SettingsManager.Current.ReduceBackgroundActivity)
         {
-            // Do NOT disable backgrounding - let Chrome save CPU.
             settings.CefCommandLineArgs.Add("enable-ipc-flooding-protection", "1");
         }
         else
         {
-            // Force maximum performance even in background
-            settings.CefCommandLineArgs.Add("disable-renderer-backgrounding", "1");
-            settings.CefCommandLineArgs.Add("disable-background-timer-throttling", "1");
+            settings.CefCommandLineArgs.Add("disable-renderer-backgrounding",         "1");
+            settings.CefCommandLineArgs.Add("disable-background-timer-throttling",    "1");
             settings.CefCommandLineArgs.Add("disable-backgrounding-occluded-windows", "1");
-            settings.CefCommandLineArgs.Add("disable-ipc-flooding-protection", "1");
+            settings.CefCommandLineArgs.Add("disable-ipc-flooding-protection",        "1");
         }
 
-        // Aggressive Performance Flags
-        settings.CefCommandLineArgs.Add("disable-site-isolation-trials", "1");       // Huge RAM/CPU saver for single-site wrappers
-        settings.CefCommandLineArgs.Add("enable-quic", "1");                         // Faster networking
-        settings.CefCommandLineArgs.Add("disable-extensions", "1");                  // Disable extension system entirely
-        settings.CefCommandLineArgs.Add("disable-pdf-extension", "1");
+        settings.CefCommandLineArgs.Add("enable-quic",               "1");
+        settings.CefCommandLineArgs.Add("disable-pdf-extension",     "1");
         settings.CefCommandLineArgs.Add("disable-plugins-discovery", "1");
-        settings.CefCommandLineArgs.Add("disable-spell-checking", "1");              // Saves CPU on typing
-        settings.CefCommandLineArgs.Add("disable-print-preview", "1");               // Not needed in Discord wrapper
-        settings.CefCommandLineArgs.Add("disable-reading-from-canvas", "1");         // Anti-fingerprinting but performance positive
-        settings.CefCommandLineArgs.Add("enable-zero-copy", "1");                    // Reduces CPU usage during rasterization (works well with hardware accel)
-        settings.CefCommandLineArgs.Add("disable-component-update", "1");            // Stops background component updates
-        settings.CefCommandLineArgs.Add("disable-features", "WebRtcHideLocalIpsWithMdns,InterestFeedContentSuggestions,BlinkGenPropertyTrees,SafeBrowsing"); // Combine all disable-features here
-        settings.CefCommandLineArgs.Add("enable-features",  "AudioWorkletThreadRealtimePriority,WebAssemblySimd,WebAssemblyThreads"); // Required for Discord noise cancellation (Krisp WASM)
-        settings.CefCommandLineArgs.Add("disable-logging", "1");
-        settings.CefCommandLineArgs.Add("disable-metrics", "1");
-        settings.CefCommandLineArgs.Add("disable-metrics-reporter", "1");
+        settings.CefCommandLineArgs.Add("disable-spell-checking",    "1");
+        settings.CefCommandLineArgs.Add("disable-print-preview",     "1");
+        settings.CefCommandLineArgs.Add("disable-component-update",  "1");
+        settings.CefCommandLineArgs.Add("disable-logging",           "1");
+        settings.CefCommandLineArgs.Add("disable-metrics",           "1");
+        settings.CefCommandLineArgs.Add("disable-metrics-reporter",  "1");
 
-        // Apply performance limits if enabled
+        settings.CefCommandLineArgs.Add("disable-features",
+            "WebRtcHideLocalIpsWithMdns," +
+            "InterestFeedContentSuggestions," +
+            "BlinkGenPropertyTrees," +
+            "SafeBrowsing");
+
+        settings.CefCommandLineArgs.Add("enable-features",
+            "AudioWorkletThreadRealtimePriority," +
+            "WebAssemblySimd," +
+            "WebAssemblyThreads," +
+            "MediaRouter");
+
         if (SettingsManager.Current.EnablePerformanceLimits)
         {
-            // Memory limits
             if (SettingsManager.Current.MaxRamMB >= 100)
             {
-                int maxRamMB = SettingsManager.Current.MaxRamMB;
-                
-                // Set renderer process limit (in MB)
+                int  maxRamMB    = SettingsManager.Current.MaxRamMB;
+                int  jsHeapLimit = (maxRamMB * 40) / 100;
+                long diskCache   = Math.Min(100 * 1024 * 1024, maxRamMB * 1024L * 1024L / 2);
+                long mediaCache  = Math.Min(50  * 1024 * 1024, maxRamMB * 1024L * 512L);
+
                 settings.CefCommandLineArgs.Add("renderer-process-limit", "3");
-                
-                // Limit JavaScript heap size - scale with total RAM limit
-                // Give JS heap about 40% of total limit divided by expected processes
-                int jsHeapLimit = (maxRamMB * 40) / 100; // 40% of total for JS heap
-                settings.CefCommandLineArgs.Add("max-old-space-size", jsHeapLimit.ToString());
-                
-                // Limit disk cache size - scale with RAM limit
-                long diskCacheSize = Math.Min(100 * 1024 * 1024, maxRamMB * 1024L * 1024L / 2); // 100MB max or half of RAM limit
-                settings.CefCommandLineArgs.Add("disk-cache-size", diskCacheSize.ToString());
-                
-                // Reduce media cache - scale with RAM limit
-                long mediaCacheSize = Math.Min(50 * 1024 * 1024, maxRamMB * 1024L * 512L); // 50MB max
-                settings.CefCommandLineArgs.Add("media-cache-size", mediaCacheSize.ToString());
+                settings.CefCommandLineArgs.Add("max-old-space-size",     jsHeapLimit.ToString());
+                settings.CefCommandLineArgs.Add("disk-cache-size",        diskCache.ToString());
+                settings.CefCommandLineArgs.Add("media-cache-size",       mediaCache.ToString());
             }
 
-            // CPU optimization flags
-            // Reduce animation frame rate to save CPU
-            int targetFps = 30; // Aggressively force 30 FPS if limits enabled
-            settings.CefCommandLineArgs.Add("max-gum-fps", targetFps.ToString());
-            
-            // Limit background tab CPU usage
-            settings.CefCommandLineArgs.Add("disable-background-networking", "1");
+            settings.CefCommandLineArgs.Add("max-gum-fps",  "30");
             settings.CefCommandLineArgs.Add("disable-sync", "1");
         }
 
         Cef.Initialize(settings, performDependencyCheck: false, browserProcessHandler: null);
         _cefInitialized = true;
 
-        // Apply WebRTC routing preferences via RequestContext (the only way that works in CefSharp)
         ApplyWebRtcRequestContextPreferences();
     }
 
-    // Sets WebRTC IP routing preferences on the CEF UI thread via RequestContext.
-    // This is the only reliable method in CefSharp — command-line args have no effect
-    // for these specific WebRTC preferences.
     private static void ApplyWebRtcRequestContextPreferences()
     {
         _ = Cef.UIThreadTaskFactory.StartNew(() =>
         {
             var ctx = Cef.GetGlobalRequestContext();
             if (ctx == null) return;
-
-            // All interfaces: allows Discord to enumerate all local IPs for ICE candidates
-            ctx.SetPreference("webrtc.ip_handling_policy", "all_interfaces", out _);
-            // Allow multiple ICE routes (host, srflx, relay) simultaneously
-            ctx.SetPreference("webrtc.multiple_routes_enabled", true, out _);
-            // Allow UDP even when a proxy is configured (critical for DTLS handshake)
-            ctx.SetPreference("webrtc.nonproxied_udp_enabled", true, out _);
+            ctx.SetPreference("webrtc.ip_handling_policy",      "all_interfaces", out _);
+            ctx.SetPreference("webrtc.multiple_routes_enabled", true,             out _);
+            ctx.SetPreference("webrtc.nonproxied_udp_enabled",  true,             out _);
         });
     }
 
     // ── Startup ──────────────────────────────────────────────────────────────
-    private void OnWindowLoaded(object sender, RoutedEventArgs e)
-    {
-        InitTray();
-        // Don't init keybinds yet - wait for Discord to load
-        
-        // Use Javascript Observer instead of C# polling
-        // _voiceCheckTimer = new System.Threading.Timer(CheckVoiceChannelStatus, null, 2000, 2000);
-    }
+    private void OnWindowLoaded(object sender, RoutedEventArgs e) => InitTray();
 
     private void InitTray()
     {
@@ -430,7 +368,6 @@ public partial class MainWindow : Window
         _tray.OpenRequested += ShowApp;
         _tray.MuteToggled   += ToggleMute;
         _tray.ExitRequested += ExitApp;
-        
         _audio.VoiceActivityChanged += OnVoiceActivityChanged;
     }
 
@@ -442,7 +379,8 @@ public partial class MainWindow : Window
         _keys.FocusWindow  += ShowApp;
     }
 
-    private void OnBrowserLoadingStateChanged(object? sender, LoadingStateChangedEventArgs e)
+    private void OnBrowserLoadingStateChanged(object? sender,
+        LoadingStateChangedEventArgs e)
     {
         if (!e.IsLoading)
         {
@@ -451,57 +389,33 @@ public partial class MainWindow : Window
                 _discordLoaded = true;
                 Dispatcher.Invoke(() =>
                 {
-                    // Wait a bit more for Discord to fully initialize before keybinds
                     System.Threading.Tasks.Task.Delay(3000).ContinueWith(_ =>
-                    {
                         Dispatcher.Invoke(() =>
                         {
                             InitKeybinds();
-
-                            // Apply reduced motion CSS if enabled
                             if (SettingsManager.Current.ReducedMotion)
                                 ApplyReducedMotion();
-                        });
-                    });
+                        }));
                 });
             }
 
-            // Inject screen share picker script first
             Dispatcher.Invoke(InjectScreenSharePicker);
-            
-            // Inject WebRTC recovery script on every page load.
-            // ROOT CAUSE OF DTLS HANG:
-            //   When Discord disconnects from a voice channel, it calls getCodecSurvey()
-            //   which throws "getCodecSurvey is not implemented on MediaEngine of browsers".
-            //   This unhandled error corrupts CefSharp's WebRTC WASM state — UDP ports
-            //   from the previous session remain locked, so the next DTLS handshake hangs.
-            // fixes frozen WebRTC instances where ICE connectivity hangs forever
             Dispatcher.Invoke(InjectWebRtcRecoveryScript);
-
-            // Inject image watchdog: detects images that decoded to 0×0 (black) and reloads them
-            Dispatcher.Invoke(InjectImageWatchdog);
-
-            // Inject voice state observer to replace C# polling
             Dispatcher.Invoke(InjectVoiceStateObserver);
         }
     }
 
-    private void OnJavascriptMessageReceived(object? sender, JavascriptMessageReceivedEventArgs e)
+    private void OnJavascriptMessageReceived(object? sender,
+        JavascriptMessageReceivedEventArgs e)
     {
         if (e.Message is not string message) return;
-
         Dispatcher.Invoke(() =>
         {
             if (message.StartsWith("VoiceState:"))
             {
                 var parts = message.Split(':');
                 if (parts.Length >= 3)
-                {
-                    bool inVoice = parts[1] == "true";
-                    bool isMuted = parts[2] == "true";
-                    
-                    UpdateVoiceState(inVoice, isMuted);
-                }
+                    UpdateVoiceState(parts[1] == "true", parts[2] == "true");
             }
         });
     }
@@ -510,69 +424,53 @@ public partial class MainWindow : Window
     {
         if (inVoice != _isInVoiceChannel)
         {
-            bool wasInVoice = _isInVoiceChannel;
+            bool wasInVoice   = _isInVoiceChannel;
             _isInVoiceChannel = inVoice;
-            
+
             if (!_isInVoiceChannel)
             {
-                // Not in voice - show default icon and stop audio monitoring
                 _muteState = MuteState.Default;
                 _tray.SetState(MuteState.Default);
                 _audio.Stop();
             }
             else
             {
-                // Just joined voice channel
                 if (!wasInVoice && SettingsManager.Current.AutomaticallyMute)
                 {
-                    // Auto-mute on join
                     System.Threading.Tasks.Task.Delay(500).ContinueWith(_ =>
-                    {
                         Dispatcher.Invoke(() =>
                         {
-                            ExecuteScript(@"(function(){var b=document.querySelector('[aria-label=""Mute""]');if(b)b.click();})();");
+                            ExecuteScript(
+                                @"(function(){var b=document.querySelector('[aria-label=""Mute""]');if(b)b.click();})();");
                             _muteState = MuteState.Muted;
                             _tray.SetState(MuteState.Muted);
                             _audio.Stop();
-                        });
-                    });
+                        }));
                 }
                 else
                 {
-                    // Update state from observer
                     _muteState = isMuted ? MuteState.Muted : MuteState.Unmuted;
                     _tray.SetState(_muteState);
-                    
-                    // Only start audio monitoring if both settings are enabled
-                    if (SettingsManager.Current.ShowVoiceActivity && SettingsManager.Current.EnableAudioMonitoring)
-                    {
-                        if (_muteState == MuteState.Unmuted) _audio.Start();
-                        else _audio.Stop();
-                    }
-                    else
-                    {
-                        _audio.Stop();
-                    }
+                    SyncAudio();
                 }
             }
         }
         else if (_isInVoiceChannel)
         {
-            // Already in voice, just update mute state
             _muteState = isMuted ? MuteState.Muted : MuteState.Unmuted;
             _tray.SetState(_muteState);
-            
-            // Only start audio monitoring if both settings are enabled
-            if (SettingsManager.Current.ShowVoiceActivity && SettingsManager.Current.EnableAudioMonitoring)
-            {
-                if (_muteState == MuteState.Unmuted) _audio.Start();
-                else _audio.Stop();
-            }
-            else
-            {
-                _audio.Stop();
-            }
+            SyncAudio();
         }
+    }
+
+    private void SyncAudio()
+    {
+        if (SettingsManager.Current.ShowVoiceActivity &&
+            SettingsManager.Current.EnableAudioMonitoring &&
+            _muteState == MuteState.Unmuted)
+            _audio.Start();
+        else
+            _audio.Stop();
     }
 
     private void InjectVoiceStateObserver()
@@ -580,66 +478,47 @@ public partial class MainWindow : Window
         const string script = @"
 (function() {
     if (window.__cordexVoiceObserver) {
-        if (typeof window.__cordexVoiceObserver.forceCheck === 'function') {
+        if (typeof window.__cordexVoiceObserver.forceCheck === 'function')
             window.__cordexVoiceObserver.forceCheck();
-        }
         return;
     }
 
-    let lastInVoice = null;
-    let lastMuted = null;
-    let checkQueued = false;
+    let lastInVoice = null, lastMuted = null, checkQueued = false;
 
     function readVoiceState() {
         const inVoice =
             document.querySelector('[aria-label=""Disconnect""]') !== null ||
-            document.querySelector('[aria-label=""Mute""]') !== null ||
-            document.querySelector('[aria-label=""Unmute""]') !== null;
-
+            document.querySelector('[aria-label=""Mute""]')       !== null ||
+            document.querySelector('[aria-label=""Unmute""]')     !== null;
         const isMuted = document.querySelector('[aria-label=""Unmute""]') !== null;
         return { inVoice, isMuted };
     }
 
     function postVoiceState() {
         try {
-            const state = readVoiceState();
-
-            if (state.inVoice !== lastInVoice || state.isMuted !== lastMuted) {
-                lastInVoice = state.inVoice;
-                lastMuted = state.isMuted;
-                if (window.CefSharp && window.CefSharp.PostMessage) {
-                    window.CefSharp.PostMessage('VoiceState:' + state.inVoice + ':' + state.isMuted);
-                }
+            const s = readVoiceState();
+            if (s.inVoice !== lastInVoice || s.isMuted !== lastMuted) {
+                lastInVoice = s.inVoice; lastMuted = s.isMuted;
+                if (window.CefSharp && window.CefSharp.PostMessage)
+                    window.CefSharp.PostMessage('VoiceState:' + s.inVoice + ':' + s.isMuted);
             }
-        } catch (e) {
-            console.error('[Cordex] Voice observer error:', e);
-        }
+        } catch(e) { console.error('[Cordex] Voice observer error:', e); }
     }
 
     function scheduleCheck() {
         if (checkQueued) return;
         checkQueued = true;
-
-        setTimeout(() => {
-            checkQueued = false;
-            postVoiceState();
-        }, 100);
+        setTimeout(() => { checkQueued = false; postVoiceState(); }, 100);
     }
 
     window.__cordexVoiceObserver = { forceCheck: scheduleCheck };
 
-    document.addEventListener('click', scheduleCheck, true);
-    window.addEventListener('focus', scheduleCheck, { passive: true });
-    window.addEventListener('popstate', scheduleCheck, { passive: true });
-    window.addEventListener('hashchange', scheduleCheck, { passive: true });
+    document.addEventListener('click',            scheduleCheck, true);
+    window.addEventListener('focus',              scheduleCheck, { passive: true });
+    window.addEventListener('popstate',           scheduleCheck, { passive: true });
+    window.addEventListener('hashchange',         scheduleCheck, { passive: true });
     document.addEventListener('visibilitychange', scheduleCheck, { passive: true });
-
-    // Reduced polling from 4s to 10s for better CPU usage when idle
-    setInterval(() => {
-        if (!document.hidden) {
-            postVoiceState();
-        }
-    }, 10000);
+    setInterval(() => { if (!document.hidden) postVoiceState(); }, 10000);
 
     postVoiceState();
 })();
@@ -654,205 +533,64 @@ public partial class MainWindow : Window
     if (window.__cordexScreenShareFixed) return;
     window.__cordexScreenShareFixed = true;
 
-    console.log('[Cordex] Installing screen share handler for CEF');
+    const _orig = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+    let _active = false, _stream = null;
 
-    // Store original
-    const _origGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
-    let _isScreenShareActive = false;
-    let _currentStream = null;
-    
-    // Create a simple picker UI
-    function showScreenPicker() {
+    function showPicker() {
         return new Promise((resolve, reject) => {
             const overlay = document.createElement('div');
-            overlay.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(0, 0, 0, 0.85);
-                z-index: 999999;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            `;
-            
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:999999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;';
             const dialog = document.createElement('div');
-            dialog.style.cssText = `
-                background: #2b2d31;
-                border-radius: 8px;
-                padding: 24px;
-                min-width: 400px;
-                max-width: 500px;
-                color: #fff;
-                box-shadow: 0 8px 16px rgba(0,0,0,0.4);
-            `;
-            
+            dialog.style.cssText = 'background:#2b2d31;border-radius:8px;padding:24px;min-width:400px;max-width:500px;color:#fff;box-shadow:0 8px 16px rgba(0,0,0,0.4);';
             dialog.innerHTML = `
-                <h2 style='margin: 0 0 16px 0; font-size: 20px; font-weight: 600;'>Choose what to share</h2>
-                <div style='margin-bottom: 20px;'>
-                    <button id='cordex-share-screen' style='
-                        width: 100%;
-                        padding: 16px;
-                        margin-bottom: 12px;
-                        background: #5865f2;
-                        color: white;
-                        border: none;
-                        border-radius: 4px;
-                        font-size: 16px;
-                        cursor: pointer;
-                        font-weight: 500;
-                    '>🖥️ Entire Screen</button>
-                    <button id='cordex-share-window' style='
-                        width: 100%;
-                        padding: 16px;
-                        background: #4752c4;
-                        color: white;
-                        border: none;
-                        border-radius: 4px;
-                        font-size: 16px;
-                        cursor: pointer;
-                        font-weight: 500;
-                    '>🪟 Application Window</button>
+                <h2 style='margin:0 0 16px 0;font-size:20px;font-weight:600;'>Choose what to share</h2>
+                <div style='margin-bottom:20px;'>
+                    <button id='cx-screen' style='width:100%;padding:16px;margin-bottom:12px;background:#5865f2;color:#fff;border:none;border-radius:4px;font-size:16px;cursor:pointer;font-weight:500;'>🖥️ Entire Screen</button>
+                    <button id='cx-window' style='width:100%;padding:16px;background:#4752c4;color:#fff;border:none;border-radius:4px;font-size:16px;cursor:pointer;font-weight:500;'>🪟 Application Window</button>
                 </div>
-                <button id='cordex-cancel' style='
-                    width: 100%;
-                    padding: 12px;
-                    background: transparent;
-                    color: #b9bbbe;
-                    border: 1px solid #4e5058;
-                    border-radius: 4px;
-                    font-size: 14px;
-                    cursor: pointer;
-                '>Cancel</button>
-            `;
-            
+                <button id='cx-cancel' style='width:100%;padding:12px;background:transparent;color:#b9bbbe;border:1px solid #4e5058;border-radius:4px;font-size:14px;cursor:pointer;'>Cancel</button>`;
             overlay.appendChild(dialog);
             document.body.appendChild(overlay);
-            
-            const buttons = dialog.querySelectorAll('button');
-            buttons.forEach(btn => {
-                btn.addEventListener('mouseenter', () => {
-                    if (btn.id !== 'cordex-cancel') {
-                        btn.style.filter = 'brightness(1.1)';
-                    } else {
-                        btn.style.background = '#4e5058';
-                    }
-                });
-                btn.addEventListener('mouseleave', () => {
-                    btn.style.filter = '';
-                    if (btn.id === 'cordex-cancel') {
-                        btn.style.background = 'transparent';
-                    }
-                });
+
+            dialog.querySelectorAll('button').forEach(b => {
+                b.onmouseenter = () => { if (b.id !== 'cx-cancel') b.style.filter = 'brightness(1.1)'; else b.style.background = '#4e5058'; };
+                b.onmouseleave = () => { b.style.filter = ''; if (b.id === 'cx-cancel') b.style.background = 'transparent'; };
             });
-            
-            document.getElementById('cordex-share-screen').onclick = () => {
+
+            document.getElementById('cx-screen').onclick = () => { document.body.removeChild(overlay); resolve('screen'); };
+            document.getElementById('cx-window').onclick = () => { document.body.removeChild(overlay); resolve('window'); };
+            document.getElementById('cx-cancel').onclick = () => {
                 document.body.removeChild(overlay);
-                resolve('screen');
-            };
-            
-            document.getElementById('cordex-share-window').onclick = () => {
-                document.body.removeChild(overlay);
-                resolve('window');
-            };
-            
-            document.getElementById('cordex-cancel').onclick = () => {
-                document.body.removeChild(overlay);
-                reject(new DOMException('User cancelled screen share', 'NotAllowedError'));
+                reject(new DOMException('User cancelled', 'NotAllowedError'));
             };
         });
     }
-    
-    // Override getDisplayMedia
+
     navigator.mediaDevices.getDisplayMedia = async function(constraints) {
-        console.log('[Cordex] getDisplayMedia intercepted, original constraints:', JSON.stringify(constraints));
-        
-        // If screen share is already active, stop the previous stream first
-        if (_isScreenShareActive && _currentStream) {
-            console.log('[Cordex] Stopping previous screen share stream before starting new one');
-            const hadLiveTracks = _currentStream.getTracks().some(t => t.readyState === 'live');
-            _currentStream.getTracks().forEach(track => track.stop());
-            _currentStream = null;
-            _isScreenShareActive = false;
-            window.__cordexIsScreenSharing = false;
-            // Only delay if tracks were actually live (avoids unnecessary wait on re-stream)
-            if (hadLiveTracks) await new Promise(resolve => setTimeout(resolve, 300));
+        if (_active && _stream) {
+            const live = _stream.getTracks().some(t => t.readyState === 'live');
+            _stream.getTracks().forEach(t => t.stop());
+            _stream = null; _active = false; window.__cordexIsScreenSharing = false;
+            if (live) await new Promise(r => setTimeout(r, 300));
         }
-        
         try {
-            // Show our picker
-            const choice = await showScreenPicker();
-            console.log('[Cordex] User selected:', choice);
-            
-            // Build constraints based on user choice
-            const modifiedConstraints = {
-                video: {
-                    displaySurface: choice === 'screen' ? 'monitor' : 'window',
-                    cursor: 'always',
-                    width: { ideal: 1920, max: 3840 },
-                    height: { ideal: 1080, max: 2160 },
-                    frameRate: { ideal: 30, max: 60 }
-                },
+            const choice = await showPicker();
+            const stream = await _orig({
+                video: { displaySurface: choice === 'screen' ? 'monitor' : 'window', cursor: 'always', width: { ideal: 1920, max: 3840 }, height: { ideal: 1080, max: 2160 }, frameRate: { ideal: 30, max: 60 } },
                 audio: constraints?.audio || false
-            };
-            
-            console.log('[Cordex] Calling original getDisplayMedia with:', JSON.stringify(modifiedConstraints));
-            
-            // Call the original getDisplayMedia - CEF should auto-approve with fake UI
-            const stream = await _origGetDisplayMedia(modifiedConstraints);
-            
-            _currentStream = stream;
-            _isScreenShareActive = true;
-            window.__cordexIsScreenSharing = true;
-            
-            // Monitor when stream ends or is muted (grey stream recovery)
-            stream.getTracks().forEach(track => {
-                track.addEventListener('ended', () => {
-                    console.log('[Cordex] Screen share track ended');
-                    _isScreenShareActive = false;
-                    _currentStream = null;
-                    window.__cordexIsScreenSharing = false;
-                });
-                // Muted track = grey stream: notify Discord of the device state change
-                track.addEventListener('mute', () => {
-                    console.log('[Cordex] Screen share track muted — dispatching devicechange');
-                    if (navigator.mediaDevices) {
-                        navigator.mediaDevices.dispatchEvent(new Event('devicechange'));
-                    }
-                });
             });
-            
-            console.log('[Cordex] Stream obtained successfully!');
-            console.log('[Cordex] Stream ID:', stream.id);
-            console.log('[Cordex] Video tracks:', stream.getVideoTracks().length);
-            console.log('[Cordex] Audio tracks:', stream.getAudioTracks().length);
-            
-            if (stream.getVideoTracks().length > 0) {
-                const videoTrack = stream.getVideoTracks()[0];
-                const settings = videoTrack.getSettings();
-                console.log('[Cordex] Video track settings:', JSON.stringify(settings));
-                console.log('[Cordex] Video track enabled:', videoTrack.enabled);
-                console.log('[Cordex] Video track muted:', videoTrack.muted);
-                console.log('[Cordex] Video track readyState:', videoTrack.readyState);
-            }
-            
+            _stream = stream; _active = true; window.__cordexIsScreenSharing = true;
+            stream.getTracks().forEach(t => {
+                t.addEventListener('ended', () => { _active = false; _stream = null; window.__cordexIsScreenSharing = false; });
+                t.addEventListener('mute',  () => { navigator.mediaDevices?.dispatchEvent(new Event('devicechange')); });
+            });
             return stream;
-            
-        } catch (error) {
-            _isScreenShareActive = false;
-            _currentStream = null;
-            console.error('[Cordex] Screen share failed!');
-            console.error('[Cordex] Error name:', error.name);
-            console.error('[Cordex] Error message:', error.message);
-            console.error('[Cordex] Error stack:', error.stack);
-            throw error;
+        } catch(err) {
+            _active = false; _stream = null;
+            console.error('[Cordex] Screen share failed:', err.message);
+            throw err;
         }
     };
-    
-    console.log('[Cordex] Screen share handler installed successfully');
 })();
 ";
         ExecuteScript(script);
@@ -865,286 +603,135 @@ public partial class MainWindow : Window
     if (window.__cordexWebRtcRecovery) return;
     window.__cordexWebRtcRecovery = true;
 
-    var _actionPending   = false;
-    var _reconnectCount  = 0;
-    var MAX_SOFT_RETRIES = 2;
-    // Screen sharing state is tracked by InjectScreenSharePicker via window.__cordexIsScreenSharing
+    var _pending = false, _retries = 0, MAX = 2;
 
-    function scheduleReload(reason) {
-        if (_actionPending) return;
-        // Don't reload if we're actively screen sharing
-        if (window.__cordexIsScreenSharing) {
-            console.warn('[Cordex] Skipping reload - screen share is active (' + reason + ')');
-            return;
-        }
-        _actionPending = true;
-        console.warn('[Cordex] Hard reload (' + reason + ')...');
-        setTimeout(function() { location.reload(); }, 800);
+    function hardReload(r) {
+        if (_pending || window.__cordexIsScreenSharing) return;
+        _pending = true;
+        setTimeout(() => location.reload(), 800);
     }
 
-    function attemptSmartReconnect(reason) {
-        if (_actionPending) return;
-        // Don't reconnect if we're actively screen sharing
-        if (window.__cordexIsScreenSharing) {
-            console.warn('[Cordex] Skipping reconnect - screen share is active (' + reason + ')');
-            return;
-        }
-        _actionPending = true;
-        _reconnectCount++;
-
-        if (_reconnectCount > MAX_SOFT_RETRIES) {
-            console.warn('[Cordex] Max reconnects reached, hard reload...');
-            setTimeout(function() { location.reload(); }, 500);
-            return;
-        }
-
-        console.warn('[Cordex] DTLS stuck (' + reason + '). Soft reconnect #' + _reconnectCount + '...');
-        var channelPath = window.location.pathname;
-
+    function reconnect(r) {
+        if (_pending || window.__cordexIsScreenSharing) return;
+        _pending = true; _retries++;
+        if (_retries > MAX) { setTimeout(() => location.reload(), 500); return; }
+        var path = location.pathname;
         setTimeout(function() {
-            var retryBtn = document.querySelector('[aria-label=""Reconnect""]') ||
-                           document.querySelector('[aria-label=""Try Again""]');
-            if (retryBtn) {
-                console.warn('[Cordex] Clicking Discord Reconnect button.');
-                retryBtn.click();
-                setTimeout(function() { _actionPending = false; }, 8000);
-                return;
-            }
-
-            var disconnectBtn = document.querySelector('[aria-label=""Disconnect""]');
-            if (disconnectBtn) {
-                console.warn('[Cordex] Disconnecting from broken voice session...');
-                disconnectBtn.click();
-
+            var btn = document.querySelector('[aria-label=""Reconnect""]') ||
+                      document.querySelector('[aria-label=""Try Again""]');
+            if (btn) { btn.click(); setTimeout(() => _pending = false, 8000); return; }
+            var dc = document.querySelector('[aria-label=""Disconnect""]');
+            if (dc) {
+                dc.click();
                 setTimeout(function() {
-                    try {
-                        window.history.pushState({}, '', channelPath);
-                        window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
-                    } catch(ex) {}
-
+                    try { history.pushState({}, '', path); dispatchEvent(new PopStateEvent('popstate',{state:{}})); } catch(e){}
                     setTimeout(function() {
-                        var joinBtn = document.querySelector('[aria-label=""Join Voice Channel""]') ||
-                                      document.querySelector('[class*=""joinButton""]') ||
-                                      document.querySelector('button[class*=""connect""]');
-                        if (joinBtn) {
-                            console.warn('[Cordex] Auto-clicking Join Voice Channel.');
-                            joinBtn.click();
-                        }
-                        setTimeout(function() { _actionPending = false; }, 8000);
+                        var jn = document.querySelector('[aria-label=""Join Voice Channel""]') ||
+                                 document.querySelector('[class*=""joinButton""]');
+                        if (jn) jn.click();
+                        setTimeout(() => _pending = false, 8000);
                     }, 1500);
                 }, 1500);
-            } else {
-                location.reload();
-            }
+            } else location.reload();
         }, 800);
     }
 
-    // getCodecSurvey error handler - don't reload if screen sharing
-    window.addEventListener('unhandledrejection', function(e) {
-        var msg = (e && e.reason && e.reason.message) ? e.reason.message : '';
-        if (msg.indexOf('getCodecSurvey') !== -1 || msg.indexOf('MediaEngine') !== -1) {
+    window.addEventListener('unhandledrejection', e => {
+        var m = e?.reason?.message || '';
+        if (m.includes('getCodecSurvey') || m.includes('MediaEngine')) {
             e.preventDefault();
-            if (!window.__cordexIsScreenSharing) {
-                scheduleReload('getCodecSurvey unhandledrejection');
-            } else {
-                console.warn('[Cordex] getCodecSurvey error suppressed - screen share active');
-            }
-        }
-    });
-    window.addEventListener('error', function(e) {
-        var msg = (e && e.message) ? e.message : '';
-        if (msg.indexOf('getCodecSurvey') !== -1 || msg.indexOf('MediaEngine') !== -1) {
-            e.preventDefault();
-            if (!window.__cordexIsScreenSharing) {
-                scheduleReload('getCodecSurvey error');
-            } else {
-                console.warn('[Cordex] getCodecSurvey error suppressed - screen share active');
-            }
+            if (!window.__cordexIsScreenSharing) hardReload(m);
         }
     });
 
-    var _OrigRTCPeerConnection = window.RTCPeerConnection;
-    if (_OrigRTCPeerConnection) {
-        window.RTCPeerConnection = function(config, constraints) {
-            var pc  = new _OrigRTCPeerConnection(config, constraints);
-            var _iceTimeout   = null;
-            var ICE_TIMEOUT_MS = 12000; // Reduced from 18s for faster DTLS hang recovery
+    window.addEventListener('error', e => {
+        var m = e?.message || '';
+        if (m.includes('getCodecSurvey') || m.includes('MediaEngine')) {
+            e.preventDefault();
+            if (!window.__cordexIsScreenSharing) hardReload(m);
+        }
+    });
 
-            var _origCreateOffer    = pc.createOffer.bind(pc);
-            var _offerTimer         = null;
-            var _pendingRes         = null;
-            var _pendingRej         = null;
-            pc.createOffer = function(optOrSucc, fail, opts) {
-                var o = (typeof optOrSucc === 'object' && optOrSucc !== null) ? optOrSucc : (opts || {});
-                if (typeof optOrSucc === 'function') return _origCreateOffer(optOrSucc, fail, o);
-                return new Promise(function(res, rej) {
-                    if (_offerTimer !== null) {
-                        clearTimeout(_offerTimer);
-                        if (_pendingRej) _pendingRej(new DOMException('debounced', 'InvalidStateError'));
-                    }
-                    _pendingRes = res; _pendingRej = rej;
-                    _offerTimer = setTimeout(function() {
-                        _offerTimer = _pendingRes = _pendingRej = null;
-                        _origCreateOffer(o).then(res, rej);
-                    }, 400);
+    var _Orig = window.RTCPeerConnection;
+    if (_Orig) {
+        window.RTCPeerConnection = function(cfg, con) {
+            var pc = new _Orig(cfg, con), _iceT = null;
+            var _origOffer = pc.createOffer.bind(pc), _oT = null, _res = null, _rej = null;
+            pc.createOffer = function(a, b, c) {
+                var o = typeof a === 'object' && a ? a : (c || {});
+                if (typeof a === 'function') return _origOffer(a, b, o);
+                return new Promise(function(rs, rj) {
+                    if (_oT) { clearTimeout(_oT); if (_rej) _rej(new DOMException('debounced','InvalidStateError')); }
+                    _res = rs; _rej = rj;
+                    _oT = setTimeout(function() { _oT = _res = _rej = null; _origOffer(o).then(rs, rj); }, 400);
                 });
             };
-
-            function clearIceTimeout() {
-                if (_iceTimeout !== null) { clearTimeout(_iceTimeout); _iceTimeout = null; }
+            function clrIce() { if (_iceT) { clearTimeout(_iceT); _iceT = null; } }
+            function strtIce(l) {
+                clrIce();
+                _iceT = setTimeout(function() {
+                    if (pc.iceConnectionState==='checking'||pc.iceConnectionState==='new'||
+                        pc.connectionState==='connecting')
+                        reconnect('ICE stuck 12s ('+l+')');
+                }, 12000);
             }
-            function startIceTimeout(label) {
-                clearIceTimeout();
-                _iceTimeout = setTimeout(function() {
-                    if (pc.iceConnectionState === 'checking' || pc.iceConnectionState === 'new' ||
-                        pc.connectionState    === 'connecting') {
-                        attemptSmartReconnect('ICE stuck after 18s (' + label + ')');
-                    }
-                }, ICE_TIMEOUT_MS);
-            }
-
             pc.addEventListener('connectionstatechange', function() {
                 var s = pc.connectionState;
-                if      (s === 'failed')     { clearIceTimeout(); attemptSmartReconnect('connectionState=failed'); }
-                else if (s === 'connecting') { startIceTimeout('connectionState=connecting'); }
-                else if (s === 'connected' || s === 'closed') { clearIceTimeout(); _reconnectCount = 0; }
+                if      (s==='failed')                  { clrIce(); reconnect('conn=failed'); }
+                else if (s==='connecting')              strtIce('conn');
+                else if (s==='connected'||s==='closed') { clrIce(); _retries=0; }
             });
             pc.addEventListener('iceconnectionstatechange', function() {
                 var s = pc.iceConnectionState;
-                if      (s === 'failed')    { clearIceTimeout(); attemptSmartReconnect('iceConnectionState=failed'); }
-                else if (s === 'checking')  { startIceTimeout('iceConnectionState=checking'); }
-                else if (s === 'connected' || s === 'completed' || s === 'closed') { clearIceTimeout(); }
+                if      (s==='failed')                                   { clrIce(); reconnect('ice=failed'); }
+                else if (s==='checking')                                 strtIce('ice');
+                else if (s==='connected'||s==='completed'||s==='closed') clrIce();
             });
-
             return pc;
         };
-        window.RTCPeerConnection.prototype = _OrigRTCPeerConnection.prototype;
+        window.RTCPeerConnection.prototype = _Orig.prototype;
     }
 })();
 ";
         ExecuteScript(script);
     }
-
 
     private void ApplyReducedMotion()
     {
-        var css = @"
-            *, *::before, *::after {
-                animation: none !important;
-                transition: none !important;
-                scroll-behavior: auto !important;
-            }
-        ";
-        
-        var script = $@"
-            (function() {{
-                var style = document.createElement('style');
-                style.textContent = `{css}`;
-                document.head.appendChild(style);
-            }})();
-        ";
-        
-        ExecuteScript(script);
+        ExecuteScript(@"
+(function(){
+    var s = document.createElement('style');
+    s.textContent = '*:not(iframe):not(video):not(canvas):not([class*=""message""]){animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important;scroll-behavior:auto!important;}';
+    document.head.appendChild(s);
+})();");
     }
 
-    private void InjectImageWatchdog()
-    {
-        const string script = @"
-(function() {
-    if (window.__cordexImgWatchdog) return;
-    window.__cordexImgWatchdog = true;
-
-    // Force-reload any <img> whose src loaded but rendered with zero natural size
-    // (symptom of a black image caused by a dropped compositor surface)
-    function fixBlackImages(root) {
-        (root || document).querySelectorAll('img[src]').forEach(function(img) {
-            if (!img.complete) return;          // still loading — leave it alone
-            if (img.naturalWidth > 0) return;   // rendered fine
-            if (!img.src || img.src === window.location.href) return;
-            // Recycle the src to trigger a fresh decode
-            var s = img.src;
-            img.src = '';
-            img.src = s;
-        });
-    }
-
-    // Run once on inject (catches images already in DOM)
-    setTimeout(function() { fixBlackImages(document); }, 2000);
-
-    // Watch for new images added by React
-    var obs = new MutationObserver(function(mutations) {
-        mutations.forEach(function(m) {
-            m.addedNodes.forEach(function(node) {
-                if (node.nodeType !== 1) return;
-                if (node.tagName === 'IMG') {
-                    node.addEventListener('load', function() {
-                        if (node.naturalWidth === 0) {
-                            var s = node.src; node.src = ''; node.src = s;
-                        }
-                    }, { once: true });
-                } else {
-                    node.querySelectorAll && node.querySelectorAll('img[src]').forEach(function(img) {
-                        if (img.complete && img.naturalWidth === 0 && img.src) {
-                            var s = img.src; img.src = ''; img.src = s;
-                        }
-                    });
-                }
-            });
-        });
-    });
-    obs.observe(document.body, { childList: true, subtree: true });
-})();
-";
-        ExecuteScript(script);
-    }
-
-    private void ExecuteScriptAsync(string script, Action<object?> callback)
-    {
-        Browser.GetMainFrame()?.EvaluateScriptAsync(script).ContinueWith(task =>
-        {
-            if (task.IsCompleted && task.Result.Success)
-            {
-                Dispatcher.Invoke(() => callback(task.Result.Result));
-            }
-        });
-    }
+    private void ExecuteScript(string script)
+        => Browser.GetMainFrame()?.ExecuteJavaScriptAsync(script);
 
     // ── DevTools (F9) ────────────────────────────────────────────────────────
-    private void OnWindowPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    private void OnWindowPreviewKeyDown(object sender,
+        System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == System.Windows.Input.Key.F9)
-        {
-            Browser.ShowDevTools();
-            e.Handled = true;
-        }
+        { Browser.ShowDevTools(); e.Handled = true; }
     }
 
-    // ── Title Bar Buttons ─────────────────────────────────────────────────────
+    // ── Title Bar Buttons ────────────────────────────────────────────────────
     private void BtnClose_Click(object sender, RoutedEventArgs e)
-    {
-        if (SettingsManager.Current.CloseToTray)
-            Hide();
-        else
-            ExitApp();
-    }
-    
+    { if (SettingsManager.Current.CloseToTray) Hide(); else ExitApp(); }
+
     private void BtnMinimize_Click(object sender, RoutedEventArgs e)
-    {
-        if (SettingsManager.Current.MinimizeToTray)
-            Hide();
-        else
-            WindowState = WindowState.Minimized;
-    }
-    
+    { if (SettingsManager.Current.MinimizeToTray) Hide(); else WindowState = WindowState.Minimized; }
+
     private void BtnMaximize_Click(object sender, RoutedEventArgs e)
         => WindowState = WindowState == WindowState.Maximized
-            ? WindowState.Normal
-            : WindowState.Maximized;
+            ? WindowState.Normal : WindowState.Maximized;
 
     private void BtnSettings_Click(object sender, RoutedEventArgs e)
     {
         var win = new SettingsWindow { Owner = this };
-        win.KeybindsSaved += ReloadKeybinds;
+        win.KeybindsSaved   += ReloadKeybinds;
         win.SettingsChanged += OnSettingsChanged;
         win.ShowDialog();
     }
@@ -1152,53 +739,23 @@ public partial class MainWindow : Window
     private void OnSettingsChanged()
     {
         _audio.RefreshSettings();
-
-        // Reload voice activity monitoring based on new settings (both must be enabled)
-        if (_isInVoiceChannel)
-        {
-            if (SettingsManager.Current.ShowVoiceActivity && 
-                SettingsManager.Current.EnableAudioMonitoring && 
-                _muteState == MuteState.Unmuted)
-            {
-                _audio.Start();
-            }
-            else
-            {
-                _audio.Stop();
-            }
-        }
+        if (_isInVoiceChannel) SyncAudio();
     }
 
     // ── Actions ──────────────────────────────────────────────────────────────
-    private void ExecuteScript(string script)
-    {
-        Browser.GetMainFrame()?.ExecuteJavaScriptAsync(script);
-    }
-
     private void ToggleMute()
     {
-        if (!_isInVoiceChannel) return; // Don't toggle if not in voice
-        
-        ExecuteScript(@"(function(){var b=document.querySelector('[aria-label=""Mute""],[aria-label=""Unmute""]');if(b)b.click();})();");
+        if (!_isInVoiceChannel) return;
+        ExecuteScript(
+            @"(function(){var b=document.querySelector('[aria-label=""Mute""],[aria-label=""Unmute""]');if(b)b.click();})();");
         _muteState = _muteState == MuteState.Muted ? MuteState.Unmuted : MuteState.Muted;
         _tray.SetState(_muteState);
-        
-        // Start/stop audio monitoring based on mute state and settings (both must be enabled)
-        if (SettingsManager.Current.ShowVoiceActivity && SettingsManager.Current.EnableAudioMonitoring)
-        {
-            if (_muteState == MuteState.Unmuted)
-                _audio.Start();
-            else
-                _audio.Stop();
-        }
-        else
-        {
-            _audio.Stop();
-        }
+        SyncAudio();
     }
 
     private void ToggleDeafen()
-        => ExecuteScript(@"(function(){var b=document.querySelector('[aria-label=""Deafen""],[aria-label=""Undeafen""]');if(b)b.click();})();");
+        => ExecuteScript(
+            @"(function(){var b=document.querySelector('[aria-label=""Deafen""],[aria-label=""Undeafen""]');if(b)b.click();})();");
 
     private void ShowApp()
     {
@@ -1215,10 +772,10 @@ public partial class MainWindow : Window
 
     private void OnVoiceActivityChanged(bool isTalking)
     {
-        if (!_isInVoiceChannel) return; // Ignore if not in voice
-        if (!SettingsManager.Current.ShowVoiceActivity) return; // Ignore if disabled
-        if (!SettingsManager.Current.EnableAudioMonitoring) return; // Ignore if audio monitoring disabled
-        
+        if (!_isInVoiceChannel) return;
+        if (!SettingsManager.Current.ShowVoiceActivity) return;
+        if (!SettingsManager.Current.EnableAudioMonitoring) return;
+
         Dispatcher.Invoke(() =>
         {
             if (_muteState == MuteState.Unmuted || _muteState == MuteState.Talking)
@@ -1244,106 +801,112 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(CancelEventArgs e)
     {
-        if (!_isExiting && SettingsManager.Current.CloseToTray) 
-        { 
-            e.Cancel = true; 
-            Hide(); 
-        }
+        if (!_isExiting && SettingsManager.Current.CloseToTray)
+        { e.Cancel = true; Hide(); }
         base.OnClosing(e);
     }
 }
 
+// ── DiscordRequestHandler ────────────────────────────────────────────────────
 public class DiscordRequestHandler : CefSharp.Handler.RequestHandler
 {
     protected override bool OnCertificateError(
         IWebBrowser b, IBrowser browser, CefErrorCode errorCode,
         string requestUrl, ISslInfo sslInfo, IRequestCallback callback)
-    {
-        callback.Continue(true);
-        return true;
-    }
+    { callback.Continue(true); return true; }
 
     protected override void OnRenderProcessTerminated(
         IWebBrowser browserControl, IBrowser browser, CefTerminationStatus status)
     {
-        // Reload if renderer crashes
-        if (status == CefTerminationStatus.AbnormalTermination || 
-            status == CefTerminationStatus.ProcessCrashed ||
-            status == CefTerminationStatus.ProcessWasKilled)
-        {
+        if (status is CefTerminationStatus.AbnormalTermination
+                    or CefTerminationStatus.ProcessCrashed
+                    or CefTerminationStatus.ProcessWasKilled)
             browser.Reload();
-        }
     }
 
     protected override IResourceRequestHandler GetResourceRequestHandler(
-        IWebBrowser chromiumWebBrowser, IBrowser browser, IFrame frame,
-        IRequest request, bool isNavigation, bool isDownload,
-        string requestInitiator, ref bool disableDefaultHandling)
-    {
-        return new DiscordResourceRequestHandler();
-    }
+        IWebBrowser cwb, IBrowser browser, IFrame frame, IRequest request,
+        bool isNavigation, bool isDownload, string requestInitiator,
+        ref bool disableDefaultHandling)
+        => new DiscordResourceRequestHandler();
 }
 
+// ── DiscordResourceRequestHandler ───────────────────────────────────────────
 public class DiscordResourceRequestHandler : CefSharp.Handler.ResourceRequestHandler
 {
+    // These CDN hosts must NEVER be blocked regardless of any user setting.
+    // Discord's image lightbox (onZoom) renders <img> tags that fetch directly
+    // from these hosts — blocking them produces the black overlay with no image.
+    private static bool IsCdnUrl(string url) =>
+        url.Contains("cdn.discordapp.com")          ||
+        url.Contains("media.discordapp.net")        ||
+        url.Contains("discordapp.com/attachments")  ||
+        url.Contains("discord.com/attachments")     ||
+        url.Contains("images-ext-1.discordapp.net") ||
+        url.Contains("images-ext-2.discordapp.net");
+
+    // Activity/game hosts must never be blocked for Watch Together to work.
+    private static bool IsActivityUrl(string url) =>
+        url.Contains("discord.com/activities")    ||
+        url.Contains("discordapp.com/activities") ||
+        url.Contains("youtube.com")               ||
+        url.Contains("ytimg.com")                 ||
+        url.Contains("googlevideo.com")           ||
+        url.Contains("googleapis.com");
+
     protected override CefReturnValue OnBeforeResourceLoad(
-        IWebBrowser chromiumWebBrowser, IBrowser browser, IFrame frame,
+        IWebBrowser cwb, IBrowser browser, IFrame frame,
         IRequest request, IRequestCallback callback)
     {
-        var s = SettingsManager.Current;
+        var    s   = SettingsManager.Current;
         string url = request.Url.ToLowerInvariant();
 
-        // ── Privacy Blocks ────────────────────────────────────────────────────
+        // ── WHITELIST: these hosts are never blocked by any setting ───────────
+        if (IsCdnUrl(url) || IsActivityUrl(url))
+            return CefReturnValue.Continue;
+
+        // ── Sub-frames are never blocked (YouTube activity iframe) ────────────
+        if (!frame.IsMain)
+            return CefReturnValue.Continue;
+
+        // ── Block rules (main frame only below this point) ────────────────────
         if (s.BlockFingerprinting && (url.Contains("api.js") || url.Contains("cdn-cgi")))
             return CefReturnValue.Cancel;
-
         if (s.BlockTelemetry && (url.Contains("/science") || url.Contains("/tracing")))
             return CefReturnValue.Cancel;
-
         if (s.BlockSentry && url.Contains("sentry"))
             return CefReturnValue.Cancel;
-
         if (s.BlockTypingIndicator && url.Contains("/typing"))
             return CefReturnValue.Cancel;
-
         if (s.BlockAnimatedAssets && (url.EndsWith(".gif") || url.Contains("/a_")))
             return CefReturnValue.Cancel;
-
         if (s.BlockCrashReports && (url.Contains("errors.discord.com") || url.Contains("/report-")))
             return CefReturnValue.Cancel;
-
-        // ── Performance Blocks ────────────────────────────────────────────────
         if (s.BlockExperiments && url.Contains("/experiments"))
             return CefReturnValue.Cancel;
-
-        if (s.ReduceBackgroundActivity && (url.Contains("/science") || url.Contains("/outbound-promotions") || url.Contains("/metrics")))
+        if (s.ReduceBackgroundActivity && (url.Contains("/science") ||
+            url.Contains("/outbound-promotions") || url.Contains("/metrics")))
             return CefReturnValue.Cancel;
-
         if (s.BlockMarketing && (url.Contains("/quests/") || url.Contains("/promotions") ||
-                                  url.Contains("/referrals/") || url.Contains("/collectibles-marketing")))
+            url.Contains("/referrals/") || url.Contains("/collectibles-marketing")))
             return CefReturnValue.Cancel;
-
-        if (s.BlockDetectableGames && (url.Contains("/games/detectable") || url.Contains("/non-games/detectable")))
+        if (s.BlockDetectableGames && (url.Contains("/games/detectable") ||
+            url.Contains("/non-games/detectable")))
             return CefReturnValue.Cancel;
-
-        if (s.BlockExternalImages && (url.Contains("images-ext-1.discordapp.net") || url.Contains("images-ext-2.discordapp.net")))
+        if (s.BlockExternalImages && (url.Contains("images-ext-1.discordapp.net") ||
+            url.Contains("images-ext-2.discordapp.net")))
             return CefReturnValue.Cancel;
-
-        if (s.BlockStatusPolling && (url.Contains("status.discord.com") || url.Contains("/scheduled-maintenance")))
+        if (s.BlockStatusPolling && (url.Contains("status.discord.com") ||
+            url.Contains("/scheduled-maintenance")))
             return CefReturnValue.Cancel;
-
         if (s.BlockContentInventory && url.Contains("/content-inventory/"))
             return CefReturnValue.Cancel;
-
         if (s.BlockVendorChunks && url.Contains("/assets/vendors~"))
             return CefReturnValue.Cancel;
-
         if (s.BlockDiscordStore && url.Contains("/store/"))
             return CefReturnValue.Cancel;
-
         if (s.BlockUserSurveys && (url.Contains("/survey") || url.Contains("/premium-survey")))
             return CefReturnValue.Cancel;
-
         if (s.BlockStickerPacks && url.Contains("/sticker-packs"))
             return CefReturnValue.Cancel;
 
@@ -1351,125 +914,135 @@ public class DiscordResourceRequestHandler : CefSharp.Handler.ResourceRequestHan
     }
 }
 
-
+// ── NoContextMenuHandler ─────────────────────────────────────────────────────
 public class NoContextMenuHandler : CefSharp.Handler.ContextMenuHandler
 {
     protected override void OnBeforeContextMenu(
         IWebBrowser b, IBrowser browser, IFrame frame,
-        IContextMenuParams parameters, IMenuModel model) => model.Clear();
+        IContextMenuParams p, IMenuModel model) => model.Clear();
 }
 
+// ── MediaPermissionHandler ───────────────────────────────────────────────────
 public class MediaPermissionHandler : CefSharp.Handler.PermissionHandler
 {
     protected override bool OnRequestMediaAccessPermission(
-        IWebBrowser chromiumWebBrowser, IBrowser browser, IFrame frame,
+        IWebBrowser cwb, IBrowser browser, IFrame frame,
         string requestingOrigin, MediaAccessPermissionType requestedPermissions,
         IMediaAccessCallback callback)
-    {
-        // Auto-grant ALL media permissions including screen capture
-        // The screen picker will be handled by CEF's built-in UI
-        using (callback)
-        {
-            callback.Continue(requestedPermissions);
-        }
-        return true;
-    }
+    { using (callback) { callback.Continue(requestedPermissions); } return true; }
 
     protected override bool OnShowPermissionPrompt(
-        IWebBrowser chromiumWebBrowser, IBrowser browser, ulong promptId,
+        IWebBrowser cwb, IBrowser browser, ulong promptId,
         string requestingOrigin, CefSharp.PermissionRequestType requestedPermissions,
         IPermissionPromptCallback callback)
-    {
-        // Auto-accept all permission prompts
-        using (callback)
-        {
-            callback.Continue(PermissionRequestResult.Accept);
-        }
-        return true;
-    }
+    { using (callback) { callback.Continue(PermissionRequestResult.Accept); } return true; }
 }
 
-public class ScreenCaptureDisplayHandler : CefSharp.Handler.DisplayHandler
-{
-    // This handler ensures screen capture dialogs are shown properly
-}
-
-public class ScreenShareLifeSpanHandler : CefSharp.Handler.LifeSpanHandler
+// ── DiscordLifeSpanHandler ───────────────────────────────────────────────────
+public class DiscordLifeSpanHandler : CefSharp.Handler.LifeSpanHandler
 {
     protected override bool OnBeforePopup(
-        IWebBrowser chromiumWebBrowser, IBrowser browser, IFrame frame,
-        string targetUrl, string targetFrameName, WindowOpenDisposition targetDisposition,
-        bool userGesture, IPopupFeatures popupFeatures, IWindowInfo windowInfo,
-        IBrowserSettings browserSettings, ref bool noJavascriptAccess, out IWebBrowser? newBrowser)
+        IWebBrowser cwb, IBrowser browser, IFrame frame,
+        string targetUrl, string targetFrameName,
+        WindowOpenDisposition targetDisposition, bool userGesture,
+        IPopupFeatures popupFeatures, IWindowInfo windowInfo,
+        IBrowserSettings browserSettings, ref bool noJavascriptAccess,
+        out IWebBrowser? newBrowser)
     {
         newBrowser = null;
 
-        // Allow CEF-internal URLs (DevTools, chrome://, etc.)
-        if (string.IsNullOrEmpty(targetUrl) ||
-            targetUrl.StartsWith("chrome://") ||
+        if (string.IsNullOrEmpty(targetUrl)     ||
+            targetUrl.StartsWith("chrome://")   ||
             targetUrl.StartsWith("devtools://") ||
             targetUrl.StartsWith("about:"))
+            return false;
+
+        string lower = targetUrl.ToLowerInvariant();
+
+        bool isInternal =
+            targetUrl.StartsWith("blob:")              ||
+            lower.Contains("cdn.discordapp.com")       ||
+            lower.Contains("media.discordapp.net")     ||
+            lower.Contains("discordapp.com/attachments")||
+            lower.Contains("discord.com/attachments")  ||
+            lower.Contains("discord.com/channels")     ||
+            lower.Contains("discord.com/invite")       ||
+            lower.Contains("discordapp.com")           ||
+            lower.Contains("discord.com");
+
+        if (isInternal)
         {
-            return false; // Let CEF handle these
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                var popupBrowser = new ChromiumWebBrowser(targetUrl)
+                {
+                    MenuHandler       = new NoContextMenuHandler(),
+                    PermissionHandler = new MediaPermissionHandler(),
+                    DownloadHandler   = new DiscordDownloadHandler()
+                };
+                var win = new System.Windows.Window
+                {
+                    Title                 = "Cordex",
+                    Width                 = 1000,
+                    Height                = 700,
+                    WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen,
+                    Content               = popupBrowser
+                };
+                win.Show();
+            });
+            return true;
         }
 
-        // For all http/https popups (images, downloads, external links, Discord lightboxes)
-        // open in the system default browser — avoids blank/black CEF popup windows
         if (targetUrl.StartsWith("http://") || targetUrl.StartsWith("https://"))
         {
             try
             {
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName        = targetUrl,
-                    UseShellExecute = true
-                });
+                System.Diagnostics.Process.Start(
+                    new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName        = targetUrl,
+                        UseShellExecute = true
+                    });
             }
             catch { }
         }
 
-        return true; // Block the CEF popup
+        return true;
     }
 }
 
+// ── DiscordDownloadHandler ───────────────────────────────────────────────────
 public class DiscordDownloadHandler : CefSharp.Handler.DownloadHandler
 {
     protected override void OnBeforeDownload(
-        IWebBrowser chromiumWebBrowser, IBrowser browser,
+        IWebBrowser cwb, IBrowser browser,
         DownloadItem downloadItem, IBeforeDownloadCallback callback)
     {
         if (callback.IsDisposed) return;
 
-        // Show a native SaveFileDialog on the UI thread
         System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
-            var suggestedName = downloadItem.SuggestedFileName ?? "download";
-            var ext = System.IO.Path.GetExtension(suggestedName).TrimStart('.').ToLowerInvariant();
+            var name = downloadItem.SuggestedFileName ?? "download";
+            var ext  = System.IO.Path.GetExtension(name).TrimStart('.').ToLowerInvariant();
 
             var dlg = new Microsoft.Win32.SaveFileDialog
             {
-                FileName = suggestedName,
-                Title    = "Save File"
+                FileName = name,
+                Title    = "Save File",
+                Filter   = string.IsNullOrEmpty(ext)
+                    ? "All files (*.*)|*.*"
+                    : $"{ext.ToUpperInvariant()} files (*.{ext})|*.{ext}|All files (*.*)|*.*"
             };
-
-            if (!string.IsNullOrEmpty(ext))
-                dlg.Filter = $"{ext.ToUpperInvariant()} files (*.{ext})|*.{ext}|All files (*.*)|*.*";
-            else
-                dlg.Filter = "All files (*.*)|*.*";
 
             using (callback)
             {
                 if (dlg.ShowDialog() == true)
                     callback.Continue(dlg.FileName, showDialog: false);
-                // If user cancels: callback disposed without Continue → download cancelled
             }
         });
     }
 
     protected override void OnDownloadUpdated(
-        IWebBrowser chromiumWebBrowser, IBrowser browser,
-        DownloadItem downloadItem, IDownloadItemCallback callback)
-    {
-        // Let CEF track progress normally
-    }
+        IWebBrowser cwb, IBrowser browser,
+        DownloadItem downloadItem, IDownloadItemCallback callback) { }
 }
