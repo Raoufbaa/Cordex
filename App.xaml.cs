@@ -8,6 +8,8 @@ namespace Cordex;
 public partial class App : System.Windows.Application
 {
     private static Mutex? _mutex;
+    private static bool _mutexOwned;
+    private static EventWaitHandle? _showSignal;
     private static System.Threading.Timer? _performanceMonitorTimer;
     private static int _performanceMonitorRunning;
 
@@ -37,15 +39,42 @@ public partial class App : System.Windows.Application
         _mutex = new Mutex(true, "Cordex_SingleInstance_Mutex", out bool isNew);
         if (!isNew)
         {
-            System.Windows.MessageBox.Show(
-                "Cordex is already running. Check the system tray.",
-                "Cordex",
-                System.Windows.MessageBoxButton.OK,
-                System.Windows.MessageBoxImage.Information
-            );
+            // Signal the running instance to bring its window to the front
+            try
+            {
+                using var signal = EventWaitHandle.OpenExisting("Cordex_ShowWindow_Signal");
+                signal.Set();
+            }
+            catch { }
             Shutdown();
             return;
         }
+        _mutexOwned = true;
+
+        // Listen for "show window" signals from subsequent launch attempts
+        _showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, "Cordex_ShowWindow_Signal");
+        var signalThread = new Thread(() =>
+        {
+            try
+            {
+                while (_showSignal.WaitOne())
+                {
+                    Dispatcher.BeginInvoke(() =>
+                    {
+                        if (MainWindow is System.Windows.Window win)
+                        {
+                            win.Show();
+                            win.WindowState = System.Windows.WindowState.Normal;
+                            win.Activate();
+                            win.Focus();
+                        }
+                    });
+                }
+            }
+            catch (ObjectDisposedException) { }
+        });
+        signalThread.IsBackground = true;
+        signalThread.Start();
 
         base.OnStartup(e);
 
@@ -183,9 +212,12 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(System.Windows.ExitEventArgs e)
     {
-        _performanceMonitorTimer?.Dispose();
-        _mutex?.ReleaseMutex();
-        _mutex?.Dispose();
-        base.OnExit(e);
+        try { _performanceMonitorTimer?.Dispose(); } catch { }
+        try { _showSignal?.Set(); }   catch { }   // Unblock signal thread so it can exit
+        try { _showSignal?.Dispose(); } catch { }
+        // Just Dispose() — on Windows, disposing an owned Mutex releases it automatically.
+        // Never call ReleaseMutex() here; it throws if the thread context changed.
+        try { _mutex?.Dispose(); } catch { }
+        try { base.OnExit(e); } catch { }
     }
 }
