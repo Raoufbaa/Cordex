@@ -378,7 +378,7 @@ public partial class MainWindow : Window
         _tray.OpenRequested += ShowApp;
         _tray.MuteToggled   += ToggleMute;
         _tray.ExitRequested += ExitApp;
-        _audio.VoiceActivityChanged += OnVoiceActivityChanged;
+        // Audio monitoring removed for performance
     }
 
     private void InitKeybinds()
@@ -452,21 +452,12 @@ public partial class MainWindow : Window
             }
         }
 
-        // Properly track and display the state REGARDLESS of being in voice chat
+        // Update mute state
         var newState = isDeafened ? MuteState.Deafened : (isMuted ? MuteState.Muted : MuteState.Unmuted);
-        
-        // If we are currently talking, but discord reports we are unmuted/undeafened, we stay in Talking state
-        if (_muteState == MuteState.Talking && newState == MuteState.Unmuted && inVoice)
-        {
-            // keep talking
-        }
-        else
-        {
-            _muteState = newState;
-            _tray.SetState(_muteState);
-        }
+        _muteState = newState;
+        _tray.SetState(_muteState);
 
-        if (inVoice) SyncAudio(); else _audio.Stop();
+        // Audio monitoring removed for performance
     }
 
     private void SyncAudio()
@@ -920,22 +911,6 @@ public partial class MainWindow : Window
     }
 
     private void ReloadKeybinds() { _keys.Unregister(); _keys.Register(this); }
-
-    private void OnVoiceActivityChanged(bool isTalking)
-    {
-        if (!_isInVoiceChannel) return;
-        if (!SettingsManager.Current.ShowVoiceActivity) return;
-        if (!SettingsManager.Current.EnableAudioMonitoring) return;
-
-        Dispatcher.Invoke(() =>
-        {
-            if (_muteState == MuteState.Unmuted || _muteState == MuteState.Talking)
-            {
-                _muteState = isTalking ? MuteState.Talking : MuteState.Unmuted;
-                _tray.SetState(_muteState);
-            }
-        });
-    }
 
     private void ExitApp()
     {

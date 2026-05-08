@@ -17,6 +17,9 @@ public static class PerformanceManager
     [DllImport("kernel32.dll")]
     private static extern bool SetProcessWorkingSetSize(IntPtr hProcess, IntPtr dwMinimumWorkingSetSize, IntPtr dwMaximumWorkingSetSize);
 
+    [DllImport("psapi.dll")]
+    private static extern bool EmptyWorkingSet(IntPtr hProcess);
+
     [DllImport("kernel32.dll")]
     private static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, int dwProcessId);
 
@@ -45,27 +48,48 @@ public static class PerformanceManager
     // Track if we're in an active voice connection to avoid aggressive throttling
     private static bool _isInVoiceConnection = false;
     
+    // Debounce voice state changes to avoid rapid toggling
+    private static DateTime _lastVoiceStateChange = DateTime.MinValue;
+    private const int VOICE_STATE_DEBOUNCE_MS = 2000;
+    
     public static void SetVoiceConnectionState(bool isInVoice)
     {
+        // Debounce rapid state changes
+        if ((DateTime.Now - _lastVoiceStateChange).TotalMilliseconds < VOICE_STATE_DEBOUNCE_MS)
+            return;
+            
+        if (_isInVoiceConnection == isInVoice)
+            return;
+            
         _isInVoiceConnection = isInVoice;
+        _lastVoiceStateChange = DateTime.Now;
         Debug.WriteLine($"Voice connection state: {(isInVoice ? "ACTIVE" : "INACTIVE")}");
     }
 
     public static bool RequiresMonitoring()
     {
         var settings = SettingsManager.Current;
+        int minRamMB = Math.Max(200, settings.MaxRamMB);
         return settings.EnablePerformanceLimits &&
-               (settings.MaxRamMB >= 100 || settings.MaxCpuPercent < 100);
+               (minRamMB >= 200 || settings.MaxCpuPercent < 100);
     }
 
     public static TimeSpan GetMonitoringInterval()
     {
         var settings = SettingsManager.Current;
-        // Use 60 second interval when performance limits are enabled
-        // Use 30 second interval for CPU-specific monitoring
+        
+        // If RAM limits are active, check very frequently (every 15s)
+        if (settings.MaxRamMB >= 200 && settings.MaxRamMB < 500)
+            return TimeSpan.FromSeconds(15);
+        
+        // Use 60 second interval for moderate RAM limits
+        if (settings.MaxRamMB >= 500 && settings.MaxRamMB < 1000)
+            return TimeSpan.FromSeconds(60);
+        
+        // Use 45 second interval for CPU-specific monitoring
         return settings.MaxCpuPercent < 100
-            ? TimeSpan.FromSeconds(30)
-            : TimeSpan.FromSeconds(60);
+            ? TimeSpan.FromSeconds(45)
+            : TimeSpan.FromSeconds(90);
     }
 
     public static void ApplyPerformanceSettings()
@@ -81,33 +105,70 @@ public static class PerformanceManager
             _mainProcessId = process.Id;
             var handle = process.Handle;
 
-            // Apply CPU affinity if enabled
+            // Enforce minimum limits
+            int minCpuCores = Math.Max(2, settings.MaxCpuCores);
+            int minRamMB = Math.Max(200, settings.MaxRamMB);
+            
+            // Update settings if they're below minimum
+            if (settings.MaxCpuCores < 2)
+            {
+                settings.MaxCpuCores = 2;
+                SettingsManager.Save();
+            }
+            if (settings.MaxRamMB < 200)
+            {
+                settings.MaxRamMB = 200;
+                SettingsManager.Save();
+            }
+
+            // Apply CPU affinity if enabled - STRICT ENFORCEMENT
             if (settings.EnableCpuAffinity && settings.CpuAffinityMask != 0)
             {
                 try
                 {
-                    SetProcessAffinityMask(handle, new IntPtr(settings.CpuAffinityMask));
+                    // Ensure minimum 4 cores (0-3) in affinity mask
+                    long minAffinityMask = 0x0F; // Binary 1111 = cores 0,1,2,3
+                    long effectiveMask = settings.CpuAffinityMask | minAffinityMask;
+                    SetProcessAffinityMask(handle, new IntPtr(effectiveMask));
+                    Debug.WriteLine($"Applied CPU affinity mask: 0x{effectiveMask:X}");
                 }
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"Failed to set CPU affinity: {ex.Message}");
                 }
             }
-            else if (settings.MaxCpuCores > 0 && settings.MaxCpuCores < Environment.ProcessorCount)
+            else if (minCpuCores > 0 && minCpuCores < Environment.ProcessorCount)
             {
                 try
                 {
-                    // Create affinity mask for the specified number of cores
+                    // Create affinity mask for the specified number of cores (minimum 2)
                     long mask = 0;
-                    for (int i = 0; i < settings.MaxCpuCores; i++)
+                    for (int i = 0; i < minCpuCores; i++)
                     {
                         mask |= (1L << i);
                     }
                     SetProcessAffinityMask(handle, new IntPtr(mask));
+                    Debug.WriteLine($"Applied CPU core limit: {minCpuCores} cores (mask: 0x{mask:X})");
                 }
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"Failed to set CPU core limit: {ex.Message}");
+                }
+            }
+
+            // Set HARD RAM limit immediately
+            if (minRamMB >= 200)
+            {
+                try
+                {
+                    long maxBytes = minRamMB * 1024L * 1024L;
+                    long minBytes = 50 * 1024 * 1024; // 50MB minimum
+                    SetProcessWorkingSetSize(handle, new IntPtr(minBytes), new IntPtr(maxBytes));
+                    Debug.WriteLine($"Applied RAM limit: {minRamMB} MB");
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Failed to set RAM limit: {ex.Message}");
                 }
             }
 
@@ -159,22 +220,39 @@ public static class PerformanceManager
                         Debug.WriteLine($"Applying limits to CefSharp process: {cefProc.ProcessName} (PID: {cefProc.Id})");
                     }
 
-                    // Apply CPU affinity
+                    // Apply CPU affinity - STRICT
+                    int minCpuCores = Math.Max(2, settings.MaxCpuCores);
+                    
                     if (settings.EnableCpuAffinity && settings.CpuAffinityMask != 0)
                     {
-                        SetProcessAffinityMask(cefProc.Handle, new IntPtr(settings.CpuAffinityMask));
+                        // Ensure minimum 4 cores (0-3) in affinity mask
+                        long minAffinityMask = 0x0F; // Binary 1111 = cores 0,1,2,3
+                        long effectiveMask = settings.CpuAffinityMask | minAffinityMask;
+                        SetProcessAffinityMask(cefProc.Handle, new IntPtr(effectiveMask));
                     }
-                    else if (settings.MaxCpuCores > 0 && settings.MaxCpuCores < Environment.ProcessorCount)
+                    else if (minCpuCores > 0 && minCpuCores < Environment.ProcessorCount)
                     {
                         long mask = 0;
-                        for (int i = 0; i < settings.MaxCpuCores; i++)
+                        for (int i = 0; i < minCpuCores; i++)
                         {
                             mask |= (1L << i);
                         }
                         SetProcessAffinityMask(cefProc.Handle, new IntPtr(mask));
                     }
 
-                    // Set soft RAM limit - Handled by CefCommandLineArgs now.
+                    // Apply HARD RAM limit to each CefSharp process
+                    int minRamMB = Math.Max(200, settings.MaxRamMB);
+                    if (minRamMB >= 200)
+                    {
+                        // Each CefSharp process gets a portion of the total limit
+                        int cefCount = cefProcesses.Count;
+                        long totalBytes = minRamMB * 1024L * 1024L;
+                        long cefTotalBytes = (long)(totalBytes * 0.7); // 70% for all CefSharp
+                        long perCefBytes = cefCount > 0 ? cefTotalBytes / cefCount : cefTotalBytes;
+                        long minBytes = 15 * 1024 * 1024; // 15MB minimum
+                        
+                        SetProcessWorkingSetSize(cefProc.Handle, new IntPtr(minBytes), new IntPtr(perCefBytes));
+                    }
 
                     // Set process priority
                     if (settings.ReduceBackgroundActivity)
@@ -211,8 +289,8 @@ public static class PerformanceManager
                 catch { return true; }
             });
 
-            // Rescan every 60 seconds or if we have no processes
-            if (_cachedCefProcesses.Count == 0 || (DateTime.Now - _lastProcessScan).TotalSeconds > 60)
+            // Rescan every 90 seconds (increased from 60) or if we have no processes
+            if (_cachedCefProcesses.Count == 0 || (DateTime.Now - _lastProcessScan).TotalSeconds > 90)
             {
                 var mainProcess = Process.GetCurrentProcess();
                 var childIds = ProcessHelper.GetChildProcessIds(mainProcess.Id);
@@ -280,8 +358,9 @@ public static class PerformanceManager
     public static void MonitorAndEnforceRamLimit()
     {
         var settings = SettingsManager.Current;
+        int minRamMB = Math.Max(200, settings.MaxRamMB);
 
-        if (!settings.EnablePerformanceLimits || settings.MaxRamMB < 100)
+        if (!settings.EnablePerformanceLimits || minRamMB < 200)
             return;
 
         MonitorAndEnforceRamLimit(Process.GetCurrentProcess(), GetCefSharpProcesses(), settings);
@@ -318,42 +397,77 @@ public static class PerformanceManager
                 }
             }
 
-            Debug.WriteLine($"Total RAM usage (Cordex + CefSharp): {totalRamMB} MB / {settings.MaxRamMB} MB");
-
-            if (totalRamMB > settings.MaxRamMB)
+            // Enforce minimum RAM limit of 200MB
+            int effectiveMaxRamMB = Math.Max(200, settings.MaxRamMB);
+            Debug.WriteLine($"Total RAM usage (Cordex + CefSharp): {totalRamMB} MB / {effectiveMaxRamMB} MB");
+            
+            // Start trimming at 80% of limit to be proactive
+            long trimThresholdMB = (long)(effectiveMaxRamMB * 0.8);
+            
+            if (totalRamMB > trimThresholdMB)
             {
-                Debug.WriteLine($"RAM limit exceeded by {totalRamMB - settings.MaxRamMB} MB! Enforcing limits...");
+                Debug.WriteLine($"RAM threshold exceeded ({totalRamMB} MB > {trimThresholdMB} MB)! Enforcing limits...");
 
                 // CRITICAL: Skip aggressive RAM trimming during active voice connections
-                // Working set trimming causes page faults that can timeout DTLS handshakes
                 if (_isInVoiceConnection)
                 {
-                    Debug.WriteLine("Voice connection active - skipping aggressive RAM trimming to preserve WebRTC stability");
-                    
-                    // Only do gentle GC, no working set manipulation
+                    Debug.WriteLine("Voice connection active - skipping aggressive RAM trimming");
                     GC.Collect(2, GCCollectionMode.Optimized, false, false);
                     return;
                 }
 
                 int processCount = cefProcesses.Count + 1;
-                long targetTotalBytes = settings.MaxRamMB * 1024L * 1024L;
-                long targetPerProcessBytes = targetTotalBytes / processCount;
+                long targetTotalBytes = effectiveMaxRamMB * 1024L * 1024L;
+                
+                // Allocate 30% to main process, 70% to CefSharp processes
+                long mainTargetBytes = (long)(targetTotalBytes * 0.3);
+                long cefTotalTargetBytes = (long)(targetTotalBytes * 0.7);
+                long cefPerProcessBytes = cefProcesses.Count > 0 ? cefTotalTargetBytes / cefProcesses.Count : 0;
+                
+                long minPerProcessBytes = 15 * 1024 * 1024; // Minimum 15MB per process
 
-                // Only do a single optimized GC pass instead of aggressive triple collection
-                GC.Collect(2, GCCollectionMode.Optimized, false, false);
+                // Force GC collection
+                GC.Collect(2, GCCollectionMode.Forced, true, true);
+                GC.WaitForPendingFinalizers();
+                GC.Collect(2, GCCollectionMode.Forced, true, true);
 
-                SetProcessWorkingSetSize(mainProcess.Handle, new IntPtr(1024 * 1024), new IntPtr(targetPerProcessBytes));
+                // Trim main process
+                try
+                {
+                    mainProcess.Refresh();
+                    long mainCurrent = mainProcess.WorkingSet64;
+                    if (mainCurrent > mainTargetBytes)
+                    {
+                        Debug.WriteLine($"Trimming main process: {mainCurrent / (1024 * 1024)} MB -> {mainTargetBytes / (1024 * 1024)} MB");
+                        EmptyWorkingSet(mainProcess.Handle);
+                        System.Threading.Thread.Sleep(50);
+                        SetProcessWorkingSetSize(mainProcess.Handle, new IntPtr(minPerProcessBytes), new IntPtr(mainTargetBytes));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Failed to trim main process: {ex.Message}");
+                }
 
+                // Aggressively trim CefSharp processes
                 foreach (var cefProc in cefProcesses)
                 {
                     try
                     {
+                        cefProc.Refresh();
                         long currentBytes = cefProc.WorkingSet64;
+                        long cefTargetBytes = Math.Max(minPerProcessBytes, cefPerProcessBytes);
 
-                        if (currentBytes > targetPerProcessBytes)
+                        if (currentBytes > cefTargetBytes)
                         {
-                            Debug.WriteLine($"Trimming CefSharp process {cefProc.Id} ({cefProc.ProcessName}): {currentBytes / (1024 * 1024)} MB -> target {targetPerProcessBytes / (1024 * 1024)} MB");
-                            SetProcessWorkingSetSize(cefProc.Handle, new IntPtr(1024 * 1024), new IntPtr(targetPerProcessBytes));
+                            Debug.WriteLine($"Trimming CefSharp PID {cefProc.Id}: {currentBytes / (1024 * 1024)} MB -> {cefTargetBytes / (1024 * 1024)} MB");
+                            
+                            // Empty working set first (most aggressive)
+                            EmptyWorkingSet(cefProc.Handle);
+                            System.Threading.Thread.Sleep(50);
+                            
+                            // Then set hard limits
+                            SetProcessWorkingSetSize(cefProc.Handle, new IntPtr(minPerProcessBytes), new IntPtr(cefTargetBytes));
                         }
                     }
                     catch (Exception ex)

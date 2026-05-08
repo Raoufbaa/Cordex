@@ -875,7 +875,7 @@
                                                VerticalAlignment="Center"/>
                                 </Grid>
                                 <Slider x:Name="SliderCpuCores"
-                                        Minimum="1"
+                                        Minimum="2"
                                         TickFrequency="1"
                                         IsSnapToTickEnabled="True"
                                         Foreground="#5865F2"
@@ -895,7 +895,7 @@
                                     <StackPanel Grid.Column="0">
                                         <TextBlock Text="RAM Limit"
                                                    Foreground="White" FontSize="14"/>
-                                        <TextBlock Text="Maximum RAM usage in MB (minimum 100 MB)"
+                                        <TextBlock Text="Maximum RAM usage in MB (minimum 200 MB)"
                                                    Foreground="#80848E" FontSize="11" Margin="0,2,0,0"/>
                                     </StackPanel>
                                     <TextBlock x:Name="TxtRamLimit" Grid.Column="1"
@@ -903,7 +903,7 @@
                                                VerticalAlignment="Center"/>
                                 </Grid>
                                 <Slider x:Name="SliderRamLimit"
-                                        Minimum="100" Maximum="2048" Value="200"
+                                        Minimum="200" Maximum="2048" Value="512"
                                         TickFrequency="50"
                                         IsSnapToTickEnabled="True"
                                         Foreground="#5865F2"

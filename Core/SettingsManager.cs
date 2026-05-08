@@ -37,11 +37,11 @@ public class AppSettings
     public bool HardwareAcceleration  { get; set; } = false;
     public bool ReducedMotion         { get; set; } = false;
     public bool EnablePerformanceLimits { get; set; } = false;
-    public int  MaxCpuCores           { get; set; } = Environment.ProcessorCount;
+    public int  MaxCpuCores           { get; set; } = Math.Max(2, Environment.ProcessorCount);
     public int  MaxCpuPercent         { get; set; } = 100; // Maximum CPU usage percentage
-    public int  MaxRamMB              { get; set; } = 200;
+    public int  MaxRamMB              { get; set; } = Math.Max(200, 512); // Minimum 200MB, default 512MB
     public bool EnableCpuAffinity     { get; set; } = false;
-    public long CpuAffinityMask       { get; set; } = 0;
+    public long CpuAffinityMask       { get; set; } = 0x0F; // Default to cores 0-3 (binary 1111)
     public bool LimitGpuUsage         { get; set; } = false;
     public bool ReduceBackgroundActivity { get; set; } = false;
     

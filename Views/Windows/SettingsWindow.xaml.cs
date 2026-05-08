@@ -79,11 +79,13 @@ public partial class SettingsWindow : FluentWindow
         ToggleHardwareAccel.IsChecked     = s.HardwareAcceleration;
         ToggleReducedMotion.IsChecked     = s.ReducedMotion;
         TogglePerformanceLimits.IsChecked = s.EnablePerformanceLimits;
+        SliderCpuCores.Minimum            = 2;
         SliderCpuCores.Maximum            = Environment.ProcessorCount;
-        SliderCpuCores.Value              = Math.Min(s.MaxCpuCores, Environment.ProcessorCount);
+        SliderCpuCores.Value              = Math.Max(2, Math.Min(s.MaxCpuCores, Environment.ProcessorCount));
         TxtCpuCores.Text                  = $"{(int)SliderCpuCores.Value} cores";
-        SliderRamLimit.Value              = s.MaxRamMB;
-        TxtRamLimit.Text                  = $"{s.MaxRamMB} MB";
+        SliderRamLimit.Minimum            = 200;
+        SliderRamLimit.Value              = Math.Max(200, s.MaxRamMB);
+        TxtRamLimit.Text                  = $"{(int)SliderRamLimit.Value} MB";
         ToggleLimitGpu.IsChecked          = s.LimitGpuUsage;
         ToggleReduceBackground.IsChecked  = s.ReduceBackgroundActivity;
 
@@ -333,9 +335,9 @@ public partial class SettingsWindow : FluentWindow
         s.HardwareAcceleration     = ToggleHardwareAccel.IsChecked == true;
         s.ReducedMotion            = ToggleReducedMotion.IsChecked == true;
         s.EnablePerformanceLimits  = TogglePerformanceLimits.IsChecked == true;
-        s.MaxCpuCores              = (int)SliderCpuCores.Value;
+        s.MaxCpuCores              = Math.Max(2, (int)SliderCpuCores.Value);
         s.MaxCpuPercent            = 100;
-        s.MaxRamMB                 = (int)SliderRamLimit.Value;
+        s.MaxRamMB                 = Math.Max(200, (int)SliderRamLimit.Value);
         s.LimitGpuUsage            = ToggleLimitGpu.IsChecked == true;
         s.ReduceBackgroundActivity = ToggleReduceBackground.IsChecked == true;
 
