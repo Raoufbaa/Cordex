@@ -313,6 +313,12 @@ public partial class MainWindow : Window
         settings.CefCommandLineArgs.Add("disable-logging",           "1");
         settings.CefCommandLineArgs.Add("disable-metrics",           "1");
         settings.CefCommandLineArgs.Add("disable-metrics-reporter",  "1");
+        
+        // WebRTC network resilience for high-latency/packet-loss scenarios
+        settings.CefCommandLineArgs.Add("webrtc-max-start-bitrate-kbps", "2500");
+        settings.CefCommandLineArgs.Add("webrtc-stun-probe-trial",       "Enabled");
+        settings.CefCommandLineArgs.Add("force-fieldtrials",             "WebRTC-FlexFEC-03-Advertised/Enabled/");
+
 
         settings.CefCommandLineArgs.Add("disable-features",
             "WebRtcHideLocalIpsWithMdns," +
@@ -430,6 +436,10 @@ public partial class MainWindow : Window
         {
             bool wasInVoice   = _isInVoiceChannel;
             _isInVoiceChannel = inVoice;
+
+            // Notify performance manager about voice connection state
+            // This prevents aggressive CPU/RAM throttling during WebRTC connections
+            PerformanceManager.SetVoiceConnectionState(inVoice);
 
             // Only attempt to auto-mute if transitioning INTO voice chat
             if (_isInVoiceChannel && !wasInVoice && SettingsManager.Current.AutomaticallyMute && !isMuted)
@@ -609,10 +619,12 @@ public partial class MainWindow : Window
 (function() {
     if (window.__cordexWebRtcRecovery) return;
     window.__cordexWebRtcRecovery = true;
+    
+    console.log('[Cordex] WebRTC Recovery Script v2.0 loaded');
 
     var _pending = false, _retries = 0, MAX_RETRIES = 3;
-    var ICE_TIMEOUT  = 6000;   // 6 s — ICE checking phase
-    var DTLS_TIMEOUT = 10000;  // 10 s — DTLS handshake after ICE resolves
+    var ICE_TIMEOUT  = 8000;   // 8 s — ICE checking phase (increased from 6s)
+    var DTLS_TIMEOUT = 15000;  // 15 s — DTLS handshake after ICE resolves (increased from 10s)
     var DISC_TIMEOUT = 5000;   // 5 s — disconnected-state grace period
 
     /* ═══════════════════════════════════════════════════════════
@@ -621,14 +633,23 @@ public partial class MainWindow : Window
        the DTLS handshake when the CPU is under load.
        ═══════════════════════════════════════════════════════════ */
     var _pregenCert = null;
+    var _certReady = false;
     try {
         var _OrigPC = window.RTCPeerConnection;
         if (_OrigPC && _OrigPC.generateCertificate) {
             _OrigPC.generateCertificate({ name: 'ECDSA', namedCurve: 'P-256' })
-                .then(function(c) { _pregenCert = c; })
-                .catch(function() {});
+                .then(function(c) { 
+                    _pregenCert = c; 
+                    _certReady = true;
+                    console.log('[Cordex] DTLS certificate pre-generated');
+                })
+                .catch(function(e) {
+                    console.warn('[Cordex] Failed to pre-generate DTLS cert:', e);
+                });
         }
-    } catch(e) {}
+    } catch(e) {
+        console.warn('[Cordex] Certificate pre-generation not supported:', e);
+    }
 
     /* ═══════════════════════════════════════════════════════════
        Reconnect / recovery logic
@@ -636,31 +657,75 @@ public partial class MainWindow : Window
     function reconnect(reason) {
         if (_pending || window.__cordexIsScreenSharing) return;
         _pending = true; _retries++;
-        console.log('[Cordex] WebRTC recovery: ' + reason + ' (attempt ' + _retries + '/' + MAX_RETRIES + ')');
+        console.log('[Cordex] WebRTC recovery triggered: ' + reason + ' (attempt ' + _retries + '/' + MAX_RETRIES + ')');
+        
         if (_retries > MAX_RETRIES) {
             console.log('[Cordex] Max retries exceeded — reloading page');
             setTimeout(function() { location.reload(); }, 300);
             return;
         }
+        
         var path = location.pathname;
+        
+        // First, try ICE restart if we have access to the connection
+        var didIceRestart = false;
+        try {
+            // Try to find Discord's RTCPeerConnection instance and force ICE restart
+            if (window.__cordexLastPC) {
+                console.log('[Cordex] Attempting ICE restart on existing connection');
+                window.__cordexLastPC.restartIce();
+                didIceRestart = true;
+                
+                // Give ICE restart 3 seconds to work before full reconnect
+                setTimeout(function() {
+                    if (_pending) {
+                        console.log('[Cordex] ICE restart failed, proceeding with full reconnect');
+                        doFullReconnect(path);
+                    }
+                }, 3000);
+                return;
+            }
+        } catch(e) {
+            console.log('[Cordex] ICE restart not available:', e);
+        }
+        
+        // If ICE restart not available, do full reconnect immediately
+        if (!didIceRestart) {
+            doFullReconnect(path);
+        }
+    }
+    
+    function doFullReconnect(path) {
         setTimeout(function() {
             var btn = document.querySelector('[aria-label=""Reconnect""]') ||
                       document.querySelector('[aria-label=""Try Again""]');
-            if (btn) { btn.click(); setTimeout(function(){ _pending=false; }, 4000); return; }
+            if (btn) { 
+                console.log('[Cordex] Clicking Reconnect button');
+                btn.click(); 
+                setTimeout(function(){ _pending=false; }, 4000); 
+                return; 
+            }
+            
             var dc = document.querySelector('[aria-label=""Disconnect""]');
             if (dc) {
+                console.log('[Cordex] Disconnecting and rejoining');
                 dc.click();
                 setTimeout(function() {
                     try { history.pushState({},'',path); dispatchEvent(new PopStateEvent('popstate',{state:{}})); } catch(e){}
                     setTimeout(function() {
                         var jn = document.querySelector('[aria-label=""Join Voice Channel""]') ||
                                  document.querySelector('[class*=""joinButton""]');
-                        if (jn) jn.click();
+                        if (jn) {
+                            console.log('[Cordex] Clicking Join button');
+                            jn.click();
+                        }
                         setTimeout(function(){ _pending=false; }, 4000);
                     }, 1200);
                 }, 1000);
                 return;
             }
+            
+            console.log('[Cordex] No reconnect UI found, reloading page');
             _pending = false;
             setTimeout(function() { location.reload(); }, 300);
         }, 400);
@@ -675,15 +740,22 @@ public partial class MainWindow : Window
 
     window.RTCPeerConnection = function(cfg, con) {
         /* Inject pre-generated DTLS cert to speed up handshake */
-        if (_pregenCert) {
+        if (_certReady && _pregenCert) {
             cfg = Object.assign({}, cfg || {});
-            if (!cfg.certificates || cfg.certificates.length === 0)
+            if (!cfg.certificates || cfg.certificates.length === 0) {
                 cfg.certificates = [_pregenCert];
+                console.log('[Cordex] Using pre-generated DTLS certificate');
+            }
+        } else if (!_certReady) {
+            console.warn('[Cordex] DTLS cert not ready yet - connection may be slower');
         }
 
         var pc = new _Orig(cfg, con);
         var _iceT = null, _dtlsT = null, _discT = null;
         var _iceOk = false;
+        
+        // Store reference for ICE restart capability
+        window.__cordexLastPC = pc;
 
         function clr() {
             if (_iceT)  { clearTimeout(_iceT);  _iceT  = null; }
@@ -704,8 +776,10 @@ public partial class MainWindow : Window
 
         function startDtls(label) {
             if (_dtlsT) clearTimeout(_dtlsT);
+            console.log('[Cordex] Starting DTLS timer: ' + DTLS_TIMEOUT + 'ms (' + label + ')');
             _dtlsT = setTimeout(function() {
                 _dtlsT = null;
+                console.log('[Cordex] DTLS timer fired! connectionState=' + pc.connectionState);
                 if (pc.connectionState==='connecting')
                     reconnect('DTLS stuck '+DTLS_TIMEOUT+'ms ('+label+')');
             }, DTLS_TIMEOUT);
@@ -724,6 +798,7 @@ public partial class MainWindow : Window
 
         pc.addEventListener('iceconnectionstatechange', function() {
             var s = pc.iceConnectionState;
+            console.log('[Cordex] ICE state: ' + s);
             if (s==='checking') {
                 startIce('ice');
             } else if (s==='connected' || s==='completed') {
@@ -743,7 +818,9 @@ public partial class MainWindow : Window
 
         pc.addEventListener('connectionstatechange', function() {
             var s = pc.connectionState;
+            console.log('[Cordex] Connection state: ' + s);
             if (s==='connected') {
+                console.log('[Cordex] Connection successful!');
                 clr(); _retries = 0; _iceOk = true;
             } else if (s==='connecting' && _iceOk) {
                 startDtls('conn-renego');
@@ -764,55 +841,7 @@ public partial class MainWindow : Window
         try { window.RTCPeerConnection[k] = _Orig[k]; } catch(e){}
     });
 
-    /* ═══════════════════════════════════════════════════════════
-       Layer 2 — Console-log interception
-       Discord always logs state transitions like:
-         [RTCConnection(...)] RTC connection state: X => DTLS_CONNECTING
-       This catches DTLS stalls even if Discord cached the
-       original RTCPeerConnection before our patch ran.
-       ═══════════════════════════════════════════════════════════ */
-    var _conTimer = null;
-    var _origLog = console.log;
-    console.log = function() {
-        _origLog.apply(console, arguments);
-        if (arguments.length === 0 || typeof arguments[0] !== 'string') return;
-        var m = arguments[0];
-        /* Only inspect RTC-related messages (fast prefix check) */
-        if (m.indexOf('RTC') === -1) return;
-        if (m.indexOf('RTC connection state') > -1 || m.indexOf('RTC media connection state') > -1) {
-            if (m.indexOf('DTLS_CONNECTING') > -1 || m.indexOf('ICE_CHECKING') > -1) {
-                if (!_conTimer) {
-                    _conTimer = setTimeout(function() {
-                        _conTimer = null;
-                        reconnect('console: DTLS/ICE stall ' + DTLS_TIMEOUT + 'ms');
-                    }, DTLS_TIMEOUT);
-                }
-            } else if (m.indexOf('CONNECTED') > -1) {
-                if (_conTimer) { clearTimeout(_conTimer); _conTimer = null; }
-                _retries = 0;
-            }
-        }
-    };
-    /* Also intercept console.debug in case Discord uses it */
-    var _origDbg = console.debug;
-    console.debug = function() {
-        _origDbg.apply(console, arguments);
-        if (arguments.length > 0 && typeof arguments[0] === 'string') {
-            var m = arguments[0];
-            if (m.indexOf('RTC') === -1) return;
-            if (m.indexOf('DTLS_CONNECTING') > -1 || m.indexOf('ICE_CHECKING') > -1) {
-                if (!_conTimer) {
-                    _conTimer = setTimeout(function() {
-                        _conTimer = null;
-                        reconnect('console: DTLS/ICE stall ' + DTLS_TIMEOUT + 'ms');
-                    }, DTLS_TIMEOUT);
-                }
-            } else if (m.indexOf('CONNECTED') > -1 && m.indexOf('RTC') > -1) {
-                if (_conTimer) { clearTimeout(_conTimer); _conTimer = null; }
-                _retries = 0;
-            }
-        }
-    };
+    console.log('[Cordex] WebRTC Recovery Script fully initialized');
 })();
 ";
         ExecuteScript(script);

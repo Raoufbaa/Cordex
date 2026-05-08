@@ -8,7 +8,6 @@ namespace Cordex;
 public partial class App : System.Windows.Application
 {
     private static Mutex? _mutex;
-    private static bool _mutexOwned;
     private static EventWaitHandle? _showSignal;
     private static System.Threading.Timer? _performanceMonitorTimer;
     private static int _performanceMonitorRunning;
@@ -49,7 +48,6 @@ public partial class App : System.Windows.Application
             Shutdown();
             return;
         }
-        _mutexOwned = true;
 
         // Listen for "show window" signals from subsequent launch attempts
         _showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, "Cordex_ShowWindow_Signal");

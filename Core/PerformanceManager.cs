@@ -41,6 +41,15 @@ public static class PerformanceManager
 
     private static List<Process> _cachedCefProcesses = new();
     private static DateTime _lastProcessScan = DateTime.MinValue;
+    
+    // Track if we're in an active voice connection to avoid aggressive throttling
+    private static bool _isInVoiceConnection = false;
+    
+    public static void SetVoiceConnectionState(bool isInVoice)
+    {
+        _isInVoiceConnection = isInVoice;
+        Debug.WriteLine($"Voice connection state: {(isInVoice ? "ACTIVE" : "INACTIVE")}");
+    }
 
     public static bool RequiresMonitoring()
     {
@@ -315,6 +324,17 @@ public static class PerformanceManager
             {
                 Debug.WriteLine($"RAM limit exceeded by {totalRamMB - settings.MaxRamMB} MB! Enforcing limits...");
 
+                // CRITICAL: Skip aggressive RAM trimming during active voice connections
+                // Working set trimming causes page faults that can timeout DTLS handshakes
+                if (_isInVoiceConnection)
+                {
+                    Debug.WriteLine("Voice connection active - skipping aggressive RAM trimming to preserve WebRTC stability");
+                    
+                    // Only do gentle GC, no working set manipulation
+                    GC.Collect(2, GCCollectionMode.Optimized, false, false);
+                    return;
+                }
+
                 int processCount = cefProcesses.Count + 1;
                 long targetTotalBytes = settings.MaxRamMB * 1024L * 1024L;
                 long targetPerProcessBytes = targetTotalBytes / processCount;
@@ -393,12 +413,19 @@ public static class PerformanceManager
                         if (!cpuUsageByProcess.TryGetValue(proc.Id, out double procCpuUsage) || procCpuUsage <= 1.0)
                             continue;
 
+                        // CRITICAL: Never throttle renderer processes to Idle during WebRTC connections
+                        // DTLS handshakes are time-sensitive and will fail if CPU scheduling is delayed
+                        bool isRenderer = proc.ProcessName.Contains("CefSharp.BrowserSubprocess", StringComparison.OrdinalIgnoreCase);
+                        
                         if (throttleRatio > 0.5)
                         {
-                            if (proc.PriorityClass != ProcessPriorityClass.Idle)
+                            // Renderer processes: BelowNormal max (not Idle) to preserve WebRTC timing
+                            var targetPriority = isRenderer ? ProcessPriorityClass.BelowNormal : ProcessPriorityClass.Idle;
+                            
+                            if (proc.PriorityClass != targetPriority)
                             {
-                                proc.PriorityClass = ProcessPriorityClass.Idle;
-                                Debug.WriteLine($"Set idle priority for process {proc.Id} ({proc.ProcessName})");
+                                proc.PriorityClass = targetPriority;
+                                Debug.WriteLine($"Set {targetPriority} priority for process {proc.Id} ({proc.ProcessName})");
                             }
                         }
                         else if (throttleRatio > 0.3)
