@@ -128,6 +128,10 @@ public partial class MainWindow : Window
         Browser.LifeSpanHandler   = new DiscordLifeSpanHandler();
         Browser.DownloadHandler   = new DiscordDownloadHandler();
         Browser.BrowserSettings   = new BrowserSettings { WindowlessFrameRate = 60 };
+        
+        Browser.JavascriptObjectRepository.Settings.LegacyBindingEnabled = true;
+        Browser.JavascriptObjectRepository.Register("cordexDesktop", new DesktopSourceProvider(), BindingOptions.DefaultBinder);
+
         Browser.Address           = "https://discord.com/app";
         Browser.JavascriptMessageReceived += OnJavascriptMessageReceived;
         Browser.LoadingStateChanged       += OnBrowserLoadingStateChanged;
@@ -267,8 +271,6 @@ public partial class MainWindow : Window
         settings.CefCommandLineArgs.Add("enable-media-stream",                "1");
         settings.CefCommandLineArgs.Add("enable-usermedia-screen-capturing",  "1");
         settings.CefCommandLineArgs.Add("enable-usermedia-screen-capture",    "1");
-        settings.CefCommandLineArgs.Add("use-fake-ui-for-media-stream",       "1");
-        settings.CefCommandLineArgs.Add("auto-select-desktop-capture-source", "Entire screen");
         settings.CefCommandLineArgs.Add("autoplay-policy",                    "no-user-gesture-required");
         settings.CefCommandLineArgs.Add("enforce-webrtc-ip-permission-check", "0");
         settings.CefCommandLineArgs.Add("no-sandbox",                         "1");
@@ -315,9 +317,10 @@ public partial class MainWindow : Window
         settings.CefCommandLineArgs.Add("disable-metrics-reporter",  "1");
         
         // WebRTC network resilience for high-latency/packet-loss scenarios
-        settings.CefCommandLineArgs.Add("webrtc-max-start-bitrate-kbps", "2500");
-        settings.CefCommandLineArgs.Add("webrtc-stun-probe-trial",       "Enabled");
-        settings.CefCommandLineArgs.Add("force-fieldtrials",             "WebRTC-FlexFEC-03-Advertised/Enabled/");
+        settings.CefCommandLineArgs.Add("webrtc-max-start-bitrate-kbps",         "2500");
+        settings.CefCommandLineArgs.Add("webrtc-max-cpu-consumption-percentage", "100");
+        settings.CefCommandLineArgs.Add("webrtc-stun-probe-trial",               "Enabled");
+        settings.CefCommandLineArgs.Add("force-fieldtrials",                     "WebRTC-FlexFEC-03-Advertised/Enabled/");
 
 
         settings.CefCommandLineArgs.Add("disable-features",
@@ -347,7 +350,7 @@ public partial class MainWindow : Window
                 settings.CefCommandLineArgs.Add("media-cache-size",       mediaCache.ToString());
             }
 
-            settings.CefCommandLineArgs.Add("max-gum-fps",  "30");
+            settings.CefCommandLineArgs.Add("max-gum-fps",  "60");
             settings.CefCommandLineArgs.Add("disable-sync", "1");
         }
 
@@ -541,35 +544,197 @@ public partial class MainWindow : Window
     if (window.__cordexScreenShareFixed) return;
     window.__cordexScreenShareFixed = true;
 
-    const _orig = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
     let _active = false, _stream = null;
 
-    function showPicker() {
-        return new Promise((resolve, reject) => {
+    async function showPicker() {
+        return new Promise(async (resolve, reject) => {
+            await window.CefSharp.BindObjectAsync('cordexDesktop');
+            const sourcesJson = await window.cordexDesktop.getSources();
+            const sources = JSON.parse(sourcesJson);
+
+            // Fetch Nitro status
+            let hasNitro = false;
+            try {
+                let wp = window.webpackChunkdiscord_app.push([[Math.random()], {}, (r) => r]);
+                window.webpackChunkdiscord_app.pop();
+                for (const key in wp.c) {
+                    const m = wp.c[key].exports;
+                    if (m && m.default && m.default.getCurrentUser) {
+                        const user = m.default.getCurrentUser();
+                        hasNitro = user && user.premiumType > 0;
+                        break;
+                    }
+                }
+            } catch(e) { console.warn(e); }
+
+            const resOptions = hasNitro ? 
+                [ {text:'1080p (Standard)', value:1080}, {text:'720p (Low bandwidth)', value:720}, {text:'1440p (High Res)', value:1440} ] :
+                [ {text:'720p (Nitro Required for 1080p+)', value:720} ];
+
+            const fpsOptions = hasNitro ? 
+                [ {text:'60 FPS (Smoother)', value:60}, {text:'30 FPS (Classic)', value:30} ] :
+                [ {text:'30 FPS (Nitro Required for 60fps)', value:30} ];
+
+            const sourceOptions = sources.map(s => ({text: s.name, value: s.id}));
+
+            // Create custom select helper
+            function createCustomSelect(options, container) {
+                const wrapper = document.createElement('div');
+                wrapper.style.cssText = 'position:relative;width:100%;user-select:none;';
+                
+                const btn = document.createElement('div');
+                btn.style.cssText = 'width:100%;padding:12px;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.05);border-radius:6px;font-size:14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;color:#fff;box-sizing:border-box;';
+                
+                const label = document.createElement('span');
+                label.innerText = options[0].text;
+                label.style.overflow = 'hidden';
+                label.style.textOverflow = 'ellipsis';
+                label.style.whiteSpace = 'nowrap';
+                
+                const arrow = document.createElement('span');
+                arrow.innerHTML = '▼';
+                arrow.style.fontSize = '10px';
+                arrow.style.marginLeft = '8px';
+                arrow.style.color = '#b5bac1';
+                
+                btn.appendChild(label);
+                btn.appendChild(arrow);
+                
+                const list = document.createElement('div');
+                list.className = 'cx-sel-list';
+                list.style.cssText = 'position:absolute;top:100%;left:0;width:100%;background:#2b2d31;border:1px solid rgba(255,255,255,0.1);border-radius:6px;margin-top:4px;z-index:100000;max-height:160px;overflow-y:auto;display:none;box-shadow:0 8px 16px rgba(0,0,0,0.5);box-sizing:border-box;';
+                
+                // Add custom scrollbar styling globally
+                if (!document.getElementById('cx-scrollbar-style')) {
+                    const style = document.createElement('style');
+                    style.id = 'cx-scrollbar-style';
+                    style.innerHTML = '.cx-sel-list::-webkit-scrollbar { width: 6px; } .cx-sel-list::-webkit-scrollbar-thumb { background: #1e1f22; border-radius: 4px; }';
+                    document.head.appendChild(style);
+                }
+
+                let value = options[0].value;
+                
+                options.forEach(opt => {
+                    const item = document.createElement('div');
+                    item.style.cssText = 'padding:10px 12px;color:#dbdee1;font-size:14px;cursor:pointer;transition:background 0.1s, color 0.1s;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                    item.innerText = opt.text;
+                    item.onmouseenter = () => { item.style.background = '#404249'; item.style.color = '#fff'; };
+                    item.onmouseleave = () => { item.style.background = 'transparent'; item.style.color = '#dbdee1'; };
+                    item.onclick = (e) => {
+                        e.stopPropagation();
+                        label.innerText = opt.text;
+                        value = opt.value;
+                        document.querySelectorAll('.cx-sel-list').forEach(l => l.style.display = 'none');
+                    };
+                    list.appendChild(item);
+                });
+                
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    const visible = list.style.display === 'block';
+                    document.querySelectorAll('.cx-sel-list').forEach(l => l.style.display = 'none');
+                    list.style.display = visible ? 'none' : 'block';
+                };
+                
+                wrapper.appendChild(btn);
+                wrapper.appendChild(list);
+                container.appendChild(wrapper);
+                
+                return { getValue: () => value };
+            }
+
             const overlay = document.createElement('div');
-            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:999999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:999999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;opacity:0;transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1);';
+            
             const dialog = document.createElement('div');
-            dialog.style.cssText = 'background:#2b2d31;border-radius:8px;padding:24px;min-width:400px;max-width:500px;color:#fff;box-shadow:0 8px 16px rgba(0,0,0,0.4);';
-            dialog.innerHTML = `
-                <h2 style='margin:0 0 16px 0;font-size:20px;font-weight:600;'>Choose what to share</h2>
-                <div style='margin-bottom:20px;'>
-                    <button id='cx-screen' style='width:100%;padding:16px;margin-bottom:12px;background:#5865f2;color:#fff;border:none;border-radius:4px;font-size:16px;cursor:pointer;font-weight:500;'>🖥️ Entire Screen</button>
-                    <button id='cx-window' style='width:100%;padding:16px;background:#4752c4;color:#fff;border:none;border-radius:4px;font-size:16px;cursor:pointer;font-weight:500;'>🪟 Application Window</button>
+            dialog.style.cssText = 'background:rgba(30,31,34,0.65);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:32px;min-width:440px;box-shadow:0 12px 32px rgba(0,0,0,0.5);transform:scale(0.95) translateY(10px);transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1);position:relative;overflow:visible;';
+            
+            const glow = document.createElement('div');
+            glow.style.cssText = 'position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle at 50% 0%, rgba(88,101,242,0.15) 0%, transparent 50%);pointer-events:none;z-index:0;';
+            dialog.appendChild(glow);
+
+            const content = document.createElement('div');
+            content.style.position = 'relative';
+            content.style.zIndex = '1';
+            
+            content.innerHTML = `
+                <h2 style='margin:0 0 8px 0;font-size:24px;font-weight:700;color:#f2f3f5;'>Stream Settings</h2>
+                <p style='color:#b5bac1;font-size:14px;margin:0 0 24px 0;line-height:1.5;'>
+                    Choose an application or screen to stream.
+                </p>
+
+                <div style='margin-bottom: 20px;'>
+                    <label style='display:block;color:#b5bac1;font-size:12px;text-transform:uppercase;font-weight:700;margin-bottom:8px;'>Select Source</label>
+                    <div id='cx-src-container'></div>
                 </div>
-                <button id='cx-cancel' style='width:100%;padding:12px;background:transparent;color:#b9bbbe;border:1px solid #4e5058;border-radius:4px;font-size:14px;cursor:pointer;'>Cancel</button>`;
+
+                <div style='margin-bottom: 20px; display:flex; gap: 12px;'>
+                    <div style='flex:1'>
+                        <label style='display:block;color:#b5bac1;font-size:12px;text-transform:uppercase;font-weight:700;margin-bottom:8px;'>Stream Quality</label>
+                        <div id='cx-res-container'></div>
+                    </div>
+                    <div style='flex:1'>
+                        <label style='display:block;color:#b5bac1;font-size:12px;text-transform:uppercase;font-weight:700;margin-bottom:8px;'>Frame Rate</label>
+                        <div id='cx-fps-container'></div>
+                    </div>
+                </div>
+
+                <div style='margin-bottom: 28px; display:flex; align-items: center;'>
+                    <input type='checkbox' id='cx-audio' checked style='width: 18px; height: 18px; margin-right: 10px; cursor: pointer; accent-color: #5865F2;'>
+                    <label for='cx-audio' style='color:#fff;font-size:14px;font-weight:600;cursor:pointer;'>Share System/Game Audio</label>
+                </div>
+
+                <div style='display:flex;gap:12px;'>
+                    <button id='cx-cancel' style='flex:1;padding:14px;background:transparent;color:#f2f3f5;border:1px solid rgba(255,255,255,0.1);border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s ease;'>Cancel</button>
+                    <button id='cx-start' style='flex:2;padding:14px;background:#5865F2;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s ease;box-shadow: 0 4px 12px rgba(88,101,242,0.4);'>Share Screen</button>
+                </div>
+            `;
+            
+            dialog.appendChild(content);
             overlay.appendChild(dialog);
             document.body.appendChild(overlay);
 
-            dialog.querySelectorAll('button').forEach(b => {
-                b.onmouseenter = () => { if (b.id !== 'cx-cancel') b.style.filter = 'brightness(1.1)'; else b.style.background = '#4e5058'; };
-                b.onmouseleave = () => { b.style.filter = ''; if (b.id === 'cx-cancel') b.style.background = 'transparent'; };
+            // Initialize custom drop downs
+            const srcCtrl = createCustomSelect(sourceOptions, document.getElementById('cx-src-container'));
+            const resCtrl = createCustomSelect(resOptions, document.getElementById('cx-res-container'));
+            const fpsCtrl = createCustomSelect(fpsOptions, document.getElementById('cx-fps-container'));
+
+            // Close dropdowns if clicking outside
+            overlay.addEventListener('click', (e) => {
+                if (!e.target.closest('.cx-sel-list') && !e.target.closest('div[style*=""cursor:pointer""]')) {
+                    document.querySelectorAll('.cx-sel-list').forEach(l => l.style.display = 'none');
+                }
             });
 
-            document.getElementById('cx-screen').onclick = () => { document.body.removeChild(overlay); resolve('screen'); };
-            document.getElementById('cx-window').onclick = () => { document.body.removeChild(overlay); resolve('window'); };
-            document.getElementById('cx-cancel').onclick = () => {
-                document.body.removeChild(overlay);
-                reject(new DOMException('User cancelled', 'NotAllowedError'));
+            const cancelBtn = document.getElementById('cx-cancel');
+            const startBtn = document.getElementById('cx-start');
+            
+            cancelBtn.onmouseenter = () => { cancelBtn.style.background = 'rgba(255,255,255,0.05)'; };
+            cancelBtn.onmouseleave = () => { cancelBtn.style.background = 'transparent'; };
+            startBtn.onmouseenter = () => { startBtn.style.filter = 'brightness(1.15)'; startBtn.style.transform = 'translateY(-1px)'; };
+            startBtn.onmouseleave = () => { startBtn.style.filter = 'none'; startBtn.style.transform = 'none'; };
+            startBtn.onmousedown = () => { startBtn.style.transform = 'translateY(1px)'; };
+            startBtn.onmouseup = () => { startBtn.style.transform = 'translateY(-1px)'; };
+
+            requestAnimationFrame(() => {
+                overlay.style.opacity = '1';
+                dialog.style.transform = 'scale(1) translateY(0)';
+            });
+
+            function closePicker() {
+                overlay.style.opacity = '0';
+                dialog.style.transform = 'scale(0.95) translateY(10px)';
+                setTimeout(() => { if(document.body.contains(overlay)) document.body.removeChild(overlay); }, 300);
+            }
+
+            cancelBtn.onclick = () => { closePicker(); reject(new DOMException('User cancelled', 'NotAllowedError')); };
+            startBtn.onclick = () => {
+                const sourceId = srcCtrl.getValue();
+                const res = parseInt(resCtrl.getValue(), 10);
+                const fps = parseInt(fpsCtrl.getValue(), 10);
+                const audio = document.getElementById('cx-audio').checked;
+                closePicker();
+                resolve({ sourceId, res, fps, audio });
             };
         });
     }
@@ -582,11 +747,32 @@ public partial class MainWindow : Window
             if (live) await new Promise(r => setTimeout(r, 300));
         }
         try {
-            const choice = await showPicker();
-            const stream = await _orig({
-                video: { displaySurface: choice === 'screen' ? 'monitor' : 'window', cursor: 'always', width: { ideal: 1920, max: 3840 }, height: { ideal: 1080, max: 2160 }, frameRate: { ideal: 30, max: 60 } },
-                audio: constraints?.audio || false
+            const config = await showPicker();
+            let w = 1920, h = 1080;
+            if (config.res === 720) { w = 1280; h = 720; }
+            if (config.res === 1440) { w = 2560; h = 1440; }
+
+            // Route our custom source via getUserMedia directly using desktop capture flags!
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    mandatory: {
+                        chromeMediaSource: 'desktop',
+                        chromeMediaSourceId: config.sourceId,
+                        minWidth: w,
+                        maxWidth: w * 2,
+                        minHeight: h,
+                        maxHeight: h * 2,
+                        minFrameRate: config.fps,
+                        maxFrameRate: Math.max(60, config.fps)
+                    }
+                },
+                audio: config.audio ? {
+                    mandatory: {
+                        chromeMediaSource: 'desktop'
+                    }
+                } : false
             });
+            
             _stream = stream; _active = true; window.__cordexIsScreenSharing = true;
             stream.getTracks().forEach(t => {
                 t.addEventListener('ended', () => { _active = false; _stream = null; window.__cordexIsScreenSharing = false; });
