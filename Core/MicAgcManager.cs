@@ -61,7 +61,7 @@ public static class MicAgcManager
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[MicAgcManager] Apply failed: {ex.Message}");
+                _ = ex; // Suppress warning
             }
         });
     }
@@ -78,7 +78,7 @@ public static class MicAgcManager
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[MicAgcManager] Restore failed: {ex.Message}");
+            _ = ex; // Suppress warning
         }
     }
 
@@ -97,7 +97,6 @@ public static class MicAgcManager
             var hr = enumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eCommunications, out var device);
             if (hr != 0 || device == null)
             {
-                Debug.WriteLine("[MicAgcManager] Could not get render endpoint for ducking control");
                 return;
             }
 
@@ -106,7 +105,6 @@ public static class MicAgcManager
             hr = device.Activate(ref iid, 0, IntPtr.Zero, out var obj);
             if (hr != 0 || obj is not IAudioSessionManager2 mgr)
             {
-                Debug.WriteLine("[MicAgcManager] Could not activate IAudioSessionManager2");
                 return;
             }
 
@@ -114,7 +112,6 @@ public static class MicAgcManager
             hr = mgr.GetSessionEnumerator(out var sessionEnum);
             if (hr != 0 || sessionEnum == null)
             {
-                Debug.WriteLine("[MicAgcManager] Could not get session enumerator");
                 return;
             }
 
@@ -141,7 +138,6 @@ public static class MicAgcManager
             }
 
             _duckingDisabled = disableDucking;
-            Debug.WriteLine($"[MicAgcManager] Ducking preference set to optOut={disableDucking} on {changed} sessions");
 
             Marshal.ReleaseComObject(sessionEnum);
             Marshal.ReleaseComObject(mgr);
@@ -150,7 +146,7 @@ public static class MicAgcManager
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[MicAgcManager] ApplyDuckingPreference error: {ex.Message}");
+            _ = ex; // Suppress warning
         }
     }
 
@@ -176,7 +172,6 @@ public static class MicAgcManager
                 hr = enumerator.GetDefaultAudioEndpoint(EDataFlow.eCapture, ERole.eConsole, out device);
             if (hr != 0 || device == null)
             {
-                Debug.WriteLine("[MicAgcManager] Could not get capture endpoint for SysFX control");
                 return;
             }
 
@@ -184,7 +179,6 @@ public static class MicAgcManager
             hr = device.OpenPropertyStore(2, out var store);
             if (hr != 0 || store == null)
             {
-                Debug.WriteLine("[MicAgcManager] OpenPropertyStore failed — may need elevation");
                 // Don't propagate — just silently skip
                 return;
             }
@@ -206,11 +200,6 @@ public static class MicAgcManager
             if (hr == 0)
             {
                 _sysFxDisabled = disable;
-                Debug.WriteLine($"[MicAgcManager] SysFX on capture endpoint {(disable ? "disabled" : "enabled")}");
-            }
-            else
-            {
-                Debug.WriteLine($"[MicAgcManager] SetValue for SysFX returned hr=0x{hr:X8} — may need elevation");
             }
 
             Marshal.ReleaseComObject(store);
@@ -219,12 +208,10 @@ public static class MicAgcManager
         }
         catch (Exception ex)
         {
+            _ = ex; // Suppress warning
             // Non-fatal — JS layer still works independently
-            Debug.WriteLine($"[MicAgcManager] ApplySysFxSetting error: {ex.Message}");
         }
     }
-
-    // ── COM Interfaces ─────────────────────────────────────────────────────────
 
     [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
     private class MMDeviceEnumeratorCom { }

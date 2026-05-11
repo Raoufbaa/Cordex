@@ -503,7 +503,6 @@ public partial class MainWindow : Window
                 window.__cordexOrigGetUserMedia;
             window.__cordexOrigGetUserMedia = null;
             window.__cordexMicAgcPatched    = false;
-            console.log('[Cordex] Mic AGC patch removed - auto-gain restored');
         }}
         return;
     }}
@@ -522,24 +521,28 @@ public partial class MainWindow : Window
                     ? Object.assign({{}}, constraints.audio)
                     : {{}};
 
-                // Force-disable all AGC / processing layers
-                audioConstraints.autoGainControl  = false;
-                audioConstraints.noiseSuppression = false;
-                audioConstraints.echoCancellation = false;
+                // Only patch microphone audio, NOT desktop audio (screen sharing)
+                // Desktop audio uses chromeMediaSource: 'desktop' and should not be modified
+                var isDesktopAudio = audioConstraints.mandatory && 
+                                    audioConstraints.mandatory.chromeMediaSource === 'desktop';
 
-                constraints = Object.assign({{}}, constraints,
-                    {{ audio: audioConstraints }});
+                if (!isDesktopAudio) {{
+                    // Force-disable all AGC / processing layers for microphone only
+                    audioConstraints.autoGainControl  = false;
+                    audioConstraints.noiseSuppression = false;
+                    audioConstraints.echoCancellation = false;
 
-                console.log('[Cordex] getUserMedia: AGC/noise-suppression disabled');
+                    constraints = Object.assign({{}}, constraints,
+                        {{ audio: audioConstraints }});
+                }}
             }}
         }} catch(e) {{
-            console.warn('[Cordex] Failed to patch audio constraints:', e);
+            // Silently ignore patch errors
         }}
         return _origGUM(constraints);
     }};
 
     window.__cordexMicAgcPatched = true;
-    console.log('[Cordex] Mic AGC patch active - auto-gain control disabled');
 }})();
 ";
         ExecuteScript(script);
@@ -583,7 +586,7 @@ public partial class MainWindow : Window
                 if (window.CefSharp && window.CefSharp.PostMessage)
                     window.CefSharp.PostMessage('VoiceState:' + s.inVoice + ':' + s.isMuted + ':' + s.isDeafened);
             }
-        } catch(e) { console.error('[Cordex] Voice observer error:', e); }
+        } catch(e) { /* Ignore errors */ }
     }
 
     function scheduleCheck() {
@@ -637,7 +640,7 @@ public partial class MainWindow : Window
                         break;
                     }
                 }
-            } catch(e) { console.warn(e); }
+            } catch(e) { /* Ignore */ }
 
             const resOptions = hasNitro ? 
                 [ {text:'1080p (Standard)', value:1080}, {text:'720p (Low bandwidth)', value:720}, {text:'1440p (High Res)', value:1440} ] :
@@ -853,7 +856,6 @@ public partial class MainWindow : Window
             return stream;
         } catch(err) {
             _active = false; _stream = null;
-            console.error('[Cordex] Screen share failed:', err.message);
             throw err;
         }
     };
@@ -868,8 +870,6 @@ public partial class MainWindow : Window
 (function() {
     if (window.__cordexWebRtcRecovery) return;
     window.__cordexWebRtcRecovery = true;
-    
-    console.log('[Cordex] WebRTC Recovery Script v2.0 loaded');
 
     var _pending = false, _retries = 0, MAX_RETRIES = 3;
     var ICE_TIMEOUT  = 8000;   // 8 s — ICE checking phase (increased from 6s)
@@ -890,14 +890,11 @@ public partial class MainWindow : Window
                 .then(function(c) { 
                     _pregenCert = c; 
                     _certReady = true;
-                    console.log('[Cordex] DTLS certificate pre-generated');
                 })
-                .catch(function(e) {
-                    console.warn('[Cordex] Failed to pre-generate DTLS cert:', e);
-                });
+                .catch(function(e) { /* Ignore */ });
         }
     } catch(e) {
-        console.warn('[Cordex] Certificate pre-generation not supported:', e);
+        /* Certificate pre-generation not supported */
     }
 
     /* ═══════════════════════════════════════════════════════════
@@ -906,10 +903,8 @@ public partial class MainWindow : Window
     function reconnect(reason) {
         if (_pending || window.__cordexIsScreenSharing) return;
         _pending = true; _retries++;
-        console.log('[Cordex] WebRTC recovery triggered: ' + reason + ' (attempt ' + _retries + '/' + MAX_RETRIES + ')');
         
         if (_retries > MAX_RETRIES) {
-            console.log('[Cordex] Max retries exceeded — reloading page');
             setTimeout(function() { location.reload(); }, 300);
             return;
         }
@@ -921,21 +916,19 @@ public partial class MainWindow : Window
         try {
             // Try to find Discord's RTCPeerConnection instance and force ICE restart
             if (window.__cordexLastPC) {
-                console.log('[Cordex] Attempting ICE restart on existing connection');
                 window.__cordexLastPC.restartIce();
                 didIceRestart = true;
                 
                 // Give ICE restart 3 seconds to work before full reconnect
                 setTimeout(function() {
                     if (_pending) {
-                        console.log('[Cordex] ICE restart failed, proceeding with full reconnect');
                         doFullReconnect(path);
                     }
                 }, 3000);
                 return;
             }
         } catch(e) {
-            console.log('[Cordex] ICE restart not available:', e);
+            /* ICE restart not available */
         }
         
         // If ICE restart not available, do full reconnect immediately
@@ -949,7 +942,6 @@ public partial class MainWindow : Window
             var btn = document.querySelector('[aria-label=""Reconnect""]') ||
                       document.querySelector('[aria-label=""Try Again""]');
             if (btn) { 
-                console.log('[Cordex] Clicking Reconnect button');
                 btn.click(); 
                 setTimeout(function(){ _pending=false; }, 4000); 
                 return; 
@@ -957,7 +949,6 @@ public partial class MainWindow : Window
             
             var dc = document.querySelector('[aria-label=""Disconnect""]');
             if (dc) {
-                console.log('[Cordex] Disconnecting and rejoining');
                 dc.click();
                 setTimeout(function() {
                     try { history.pushState({},'',path); dispatchEvent(new PopStateEvent('popstate',{state:{}})); } catch(e){}
@@ -965,7 +956,6 @@ public partial class MainWindow : Window
                         var jn = document.querySelector('[aria-label=""Join Voice Channel""]') ||
                                  document.querySelector('[class*=""joinButton""]');
                         if (jn) {
-                            console.log('[Cordex] Clicking Join button');
                             jn.click();
                         }
                         setTimeout(function(){ _pending=false; }, 4000);
@@ -974,7 +964,6 @@ public partial class MainWindow : Window
                 return;
             }
             
-            console.log('[Cordex] No reconnect UI found, reloading page');
             _pending = false;
             setTimeout(function() { location.reload(); }, 300);
         }, 400);
@@ -993,10 +982,9 @@ public partial class MainWindow : Window
             cfg = Object.assign({}, cfg || {});
             if (!cfg.certificates || cfg.certificates.length === 0) {
                 cfg.certificates = [_pregenCert];
-                console.log('[Cordex] Using pre-generated DTLS certificate');
             }
         } else if (!_certReady) {
-            console.warn('[Cordex] DTLS cert not ready yet - connection may be slower');
+            /* DTLS cert not ready yet */
         }
 
         var pc = new _Orig(cfg, con);
@@ -1025,10 +1013,8 @@ public partial class MainWindow : Window
 
         function startDtls(label) {
             if (_dtlsT) clearTimeout(_dtlsT);
-            console.log('[Cordex] Starting DTLS timer: ' + DTLS_TIMEOUT + 'ms (' + label + ')');
             _dtlsT = setTimeout(function() {
                 _dtlsT = null;
-                console.log('[Cordex] DTLS timer fired! connectionState=' + pc.connectionState);
                 if (pc.connectionState==='connecting')
                     reconnect('DTLS stuck '+DTLS_TIMEOUT+'ms ('+label+')');
             }, DTLS_TIMEOUT);
@@ -1047,7 +1033,6 @@ public partial class MainWindow : Window
 
         pc.addEventListener('iceconnectionstatechange', function() {
             var s = pc.iceConnectionState;
-            console.log('[Cordex] ICE state: ' + s);
             if (s==='checking') {
                 startIce('ice');
             } else if (s==='connected' || s==='completed') {
@@ -1067,9 +1052,7 @@ public partial class MainWindow : Window
 
         pc.addEventListener('connectionstatechange', function() {
             var s = pc.connectionState;
-            console.log('[Cordex] Connection state: ' + s);
             if (s==='connected') {
-                console.log('[Cordex] Connection successful!');
                 clr(); _retries = 0; _iceOk = true;
             } else if (s==='connecting' && _iceOk) {
                 startDtls('conn-renego');
@@ -1089,8 +1072,6 @@ public partial class MainWindow : Window
         if (k==='prototype'||k==='length'||k==='name') return;
         try { window.RTCPeerConnection[k] = _Orig[k]; } catch(e){}
     });
-
-    console.log('[Cordex] WebRTC Recovery Script fully initialized');
 })();
 ";
         ExecuteScript(script);

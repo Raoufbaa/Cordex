@@ -25,10 +25,6 @@ public class AudioMonitor : IDisposable
     {
         RefreshSettings();
         _timer = new System.Threading.Timer(CheckAudioLevel, null, Timeout.Infinite, Timeout.Infinite);
-        
-        // Pre-warm the COM Windows Audio component on startup to avoid locking out Discord
-        Start(); 
-        Stop();
     }
 
     public void RefreshSettings()

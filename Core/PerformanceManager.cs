@@ -63,7 +63,6 @@ public static class PerformanceManager
             
         _isInVoiceConnection = isInVoice;
         _lastVoiceStateChange = DateTime.Now;
-        Debug.WriteLine($"Voice connection state: {(isInVoice ? "ACTIVE" : "INACTIVE")}");
     }
 
     public static bool RequiresMonitoring()
@@ -130,7 +129,6 @@ public static class PerformanceManager
                     long minAffinityMask = 0x0F; // Binary 1111 = cores 0,1,2,3
                     long effectiveMask = settings.CpuAffinityMask | minAffinityMask;
                     SetProcessAffinityMask(handle, new IntPtr(effectiveMask));
-                    Debug.WriteLine($"Applied CPU affinity mask: 0x{effectiveMask:X}");
                 }
                 catch (Exception ex)
                 {
@@ -148,7 +146,6 @@ public static class PerformanceManager
                         mask |= (1L << i);
                     }
                     SetProcessAffinityMask(handle, new IntPtr(mask));
-                    Debug.WriteLine($"Applied CPU core limit: {minCpuCores} cores (mask: 0x{mask:X})");
                 }
                 catch (Exception ex)
                 {
@@ -164,7 +161,6 @@ public static class PerformanceManager
                     long maxBytes = minRamMB * 1024L * 1024L;
                     long minBytes = 50 * 1024 * 1024; // 50MB minimum
                     SetProcessWorkingSetSize(handle, new IntPtr(minBytes), new IntPtr(maxBytes));
-                    Debug.WriteLine($"Applied RAM limit: {minRamMB} MB");
                 }
                 catch (Exception ex)
                 {
@@ -217,7 +213,6 @@ public static class PerformanceManager
                     if (!_trackedCefProcessIds.Contains(cefProc.Id))
                     {
                         _trackedCefProcessIds.Add(cefProc.Id);
-                        Debug.WriteLine($"Applying limits to CefSharp process: {cefProc.ProcessName} (PID: {cefProc.Id})");
                     }
 
                     // Apply CPU affinity - STRICT
@@ -289,7 +284,14 @@ public static class PerformanceManager
                 catch { return true; }
             });
 
-            // Rescan every 90 seconds (increased from 60) or if we have no processes
+            // 1. Clean up stale processes from cache first (fast, no system-wide scan)
+            for (int i = _cachedCefProcesses.Count - 1; i >= 0; i--)
+            {
+                try { if (_cachedCefProcesses[i].HasExited) _cachedCefProcesses.RemoveAt(i); }
+                catch { _cachedCefProcesses.RemoveAt(i); }
+            }
+
+            // 2. Rescan via snapshot only if cache is empty or 90s elapsed
             if (_cachedCefProcesses.Count == 0 || (DateTime.Now - _lastProcessScan).TotalSeconds > 90)
             {
                 var mainProcess = Process.GetCurrentProcess();
@@ -302,18 +304,22 @@ public static class PerformanceManager
                     {
                         if (proc.Id == mainProcess.Id) continue;
                         
-                        if (!_cachedCefProcesses.Any(p => p.Id == proc.Id) &&
-                            (childIds.Contains(proc.Id) || 
+                        // If already in cache, skip
+                        bool alreadyTracked = false;
+                        for (int j = 0; j < _cachedCefProcesses.Count; j++)
+                        {
+                            if (_cachedCefProcesses[j].Id == proc.Id) { alreadyTracked = true; break; }
+                        }
+                        if (alreadyTracked) continue;
+
+                        if (childIds.Contains(proc.Id) || 
                             proc.ProcessName.Contains("CefSharp", StringComparison.OrdinalIgnoreCase) ||
-                            proc.ProcessName.Contains("BrowserSubprocess", StringComparison.OrdinalIgnoreCase)))
+                            proc.ProcessName.Contains("BrowserSubprocess", StringComparison.OrdinalIgnoreCase))
                         {
                             _cachedCefProcesses.Add(proc);
                         }
                     }
-                    catch
-                    {
-                        // Process may have exited or access denied
-                    }
+                    catch { }
                 }
                 
                 _lastProcessScan = DateTime.Now;
@@ -399,19 +405,15 @@ public static class PerformanceManager
 
             // Enforce minimum RAM limit of 200MB
             int effectiveMaxRamMB = Math.Max(200, settings.MaxRamMB);
-            Debug.WriteLine($"Total RAM usage (Cordex + CefSharp): {totalRamMB} MB / {effectiveMaxRamMB} MB");
             
             // Start trimming at 80% of limit to be proactive
             long trimThresholdMB = (long)(effectiveMaxRamMB * 0.8);
             
             if (totalRamMB > trimThresholdMB)
             {
-                Debug.WriteLine($"RAM threshold exceeded ({totalRamMB} MB > {trimThresholdMB} MB)! Enforcing limits...");
-
                 // CRITICAL: Skip aggressive RAM trimming during active voice connections
                 if (_isInVoiceConnection)
                 {
-                    Debug.WriteLine("Voice connection active - skipping aggressive RAM trimming");
                     GC.Collect(2, GCCollectionMode.Optimized, false, false);
                     return;
                 }
@@ -426,10 +428,8 @@ public static class PerformanceManager
                 
                 long minPerProcessBytes = 15 * 1024 * 1024; // Minimum 15MB per process
 
-                // Force GC collection
-                GC.Collect(2, GCCollectionMode.Forced, true, true);
-                GC.WaitForPendingFinalizers();
-                GC.Collect(2, GCCollectionMode.Forced, true, true);
+                // Non-blocking concurrent GC — avoids stop-the-world pauses
+                GC.Collect(2, GCCollectionMode.Optimized, false, false);
 
                 // Trim main process
                 try
@@ -438,9 +438,7 @@ public static class PerformanceManager
                     long mainCurrent = mainProcess.WorkingSet64;
                     if (mainCurrent > mainTargetBytes)
                     {
-                        Debug.WriteLine($"Trimming main process: {mainCurrent / (1024 * 1024)} MB -> {mainTargetBytes / (1024 * 1024)} MB");
                         EmptyWorkingSet(mainProcess.Handle);
-                        System.Threading.Thread.Sleep(50);
                         SetProcessWorkingSetSize(mainProcess.Handle, new IntPtr(minPerProcessBytes), new IntPtr(mainTargetBytes));
                     }
                 }
@@ -460,13 +458,8 @@ public static class PerformanceManager
 
                         if (currentBytes > cefTargetBytes)
                         {
-                            Debug.WriteLine($"Trimming CefSharp PID {cefProc.Id}: {currentBytes / (1024 * 1024)} MB -> {cefTargetBytes / (1024 * 1024)} MB");
-                            
-                            // Empty working set first (most aggressive)
+                            // Empty working set then set hard limits
                             EmptyWorkingSet(cefProc.Handle);
-                            System.Threading.Thread.Sleep(50);
-                            
-                            // Then set hard limits
                             SetProcessWorkingSetSize(cefProc.Handle, new IntPtr(minPerProcessBytes), new IntPtr(cefTargetBytes));
                         }
                     }
@@ -511,11 +504,8 @@ public static class PerformanceManager
                 }
             }
 
-            Debug.WriteLine($"Total CPU usage (Cordex + CefSharp): {totalCpuUsage:F1}% / {settings.MaxCpuPercent}%");
-
             if (totalCpuUsage > settings.MaxCpuPercent)
             {
-                Debug.WriteLine($"CPU limit exceeded by {totalCpuUsage - settings.MaxCpuPercent:F1}%! Throttling...");
 
                 double excessPercent = totalCpuUsage - settings.MaxCpuPercent;
                 double throttleRatio = excessPercent / totalCpuUsage;
@@ -539,7 +529,6 @@ public static class PerformanceManager
                             if (proc.PriorityClass != targetPriority)
                             {
                                 proc.PriorityClass = targetPriority;
-                                Debug.WriteLine($"Set {targetPriority} priority for process {proc.Id} ({proc.ProcessName})");
                             }
                         }
                         else if (throttleRatio > 0.3)
@@ -547,7 +536,6 @@ public static class PerformanceManager
                             if (proc.PriorityClass != ProcessPriorityClass.BelowNormal)
                             {
                                 proc.PriorityClass = ProcessPriorityClass.BelowNormal;
-                                Debug.WriteLine($"Reduced priority for process {proc.Id} ({proc.ProcessName})");
                             }
                         }
                     }

@@ -139,7 +139,7 @@ public static class VersionManager
             var request = new HttpRequestMessage(HttpMethod.Get, LatestReleaseUrl);
             request.Headers.Add("User-Agent", "Cordex");
             
-            var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
             var finalUrl = response.RequestMessage?.RequestUri?.ToString() ?? "";
             
             // Extract version from URL like: https://github.com/Raoufbaa/Cordex/releases/tag/v1.1.6

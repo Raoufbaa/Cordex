@@ -124,8 +124,8 @@ public partial class App : System.Windows.Application
         }
         catch (Exception ex)
         {
+            _ = ex; // Suppress warning
             // If version check fails, continue with app startup
-            System.Diagnostics.Debug.WriteLine($"Version check failed: {ex.Message}");
             StartMainWindow();
         }
     }
@@ -144,7 +144,7 @@ public partial class App : System.Windows.Application
             }
             catch (Exception perfEx)
             {
-                System.Diagnostics.Debug.WriteLine($"Performance settings failed: {perfEx.Message}");
+                _ = perfEx; // Suppress warning
                 // Continue anyway - don't let performance settings stop the app
             }
             
@@ -181,12 +181,10 @@ public partial class App : System.Windows.Application
         // Only start monitoring if performance limits are actually enabled
         if (!PerformanceManager.RequiresMonitoring())
         {
-            System.Diagnostics.Debug.WriteLine("[Cordex] Performance monitoring disabled - no limits active");
             return;
         }
 
         var interval = PerformanceManager.GetMonitoringInterval();
-        System.Diagnostics.Debug.WriteLine($"[Cordex] Performance monitoring enabled with {interval.TotalSeconds}s interval");
         
         _performanceMonitorTimer = new System.Threading.Timer(
             _ =>
