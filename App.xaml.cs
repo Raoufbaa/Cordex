@@ -139,6 +139,8 @@ public partial class App : System.Windows.Application
             {
                 PerformanceManager.ApplyPerformanceSettings();
                 RefreshPerformanceMonitoring();
+                // Apply mic AGC / ducking settings
+                Cordex.Core.MicAgcManager.Apply();
             }
             catch (Exception perfEx)
             {
@@ -211,6 +213,7 @@ public partial class App : System.Windows.Application
     protected override void OnExit(System.Windows.ExitEventArgs e)
     {
         try { _performanceMonitorTimer?.Dispose(); } catch { }
+        try { Cordex.Core.MicAgcManager.Restore();  } catch { }
         try { _showSignal?.Set(); }   catch { }   // Unblock signal thread so it can exit
         try { _showSignal?.Dispose(); } catch { }
         // Just Dispose() — on Windows, disposing an owned Mutex releases it automatically.

@@ -46,10 +46,15 @@ public class AppSettings
     public bool ReduceBackgroundActivity { get; set; } = false;
     
     // Voice & Audio
-    public bool AutomaticallyMute     { get; set; } = false;
-    public bool ShowVoiceActivity     { get; set; } = true;
-    public bool EnableAudioMonitoring { get; set; } = false;
-    public int  VoiceActivityThreshold { get; set; } = 50;
+    public bool AutomaticallyMute        { get; set; } = false;
+    public bool ShowVoiceActivity        { get; set; } = true;
+    public bool EnableAudioMonitoring    { get; set; } = false;
+    public int  VoiceActivityThreshold   { get; set; } = 50;
+
+    // Microphone AGC / Ducking Control
+    public bool DisableMicAgc            { get; set; } = false; // Disable WebRTC autoGainControl
+    public bool DisableWinDucking        { get; set; } = false; // Disable Windows comms ducking
+    public bool DisableAudioEnhancements { get; set; } = false; // Disable SysFX (driver AGC, noise suppression)
     
     // Notifications
     public bool ShowNotifications     { get; set; } = true;

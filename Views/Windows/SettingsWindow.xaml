@@ -738,6 +738,76 @@
                                            HorizontalAlignment="Center" Margin="0,4,0,0"/>
                             </StackPanel>
                         </Border>
+
+                        <!-- ── Mic AGC / Ducking Section ── -->
+                        <Rectangle Height="1" Fill="#2B2D31" Margin="0,12,0,12"/>
+                        <TextBlock Text="MICROPHONE VOLUME CONTROL"
+                                   FontSize="10" FontWeight="Bold"
+                                   Foreground="#4E5058"
+                                   Margin="0,0,0,4"/>
+                        <TextBlock Text="Windows automatically adjusts your microphone volume based on how loud you speak. Use these options to prevent that behaviour."
+                                   FontSize="11" Foreground="#80848E"
+                                   TextWrapping="Wrap" Margin="0,0,0,12"/>
+
+                        <!-- Disable Mic AGC (WebRTC layer) -->
+                        <Border Background="#2B2D31" CornerRadius="8" Padding="16,14" Margin="0,0,0,8">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Disable Microphone Auto-Gain Control"
+                                               Foreground="White" FontSize="14"/>
+                                    <TextBlock Text="Stops Windows/WebRTC from silently raising or lowering your mic volume based on how loud you speak."
+                                               Foreground="#80848E" FontSize="11"
+                                               TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <ui:ToggleSwitch x:Name="ToggleDisableMicAgc" Grid.Column="1"
+                                                 VerticalAlignment="Center" Margin="12,0,0,0"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Disable Windows Communications Ducking -->
+                        <Border Background="#2B2D31" CornerRadius="8" Padding="16,14" Margin="0,0,0,8">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Disable Windows Audio Ducking"
+                                               Foreground="White" FontSize="14"/>
+                                    <TextBlock Text="Prevents Windows from automatically lowering the volume of other apps (music, games) when you are in a voice call."
+                                               Foreground="#80848E" FontSize="11"
+                                               TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <ui:ToggleSwitch x:Name="ToggleDisableWinDucking" Grid.Column="1"
+                                                 VerticalAlignment="Center" Margin="12,0,0,0"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Disable System Audio Enhancements (SysFX/Driver AGC) -->
+                        <Border Background="#2B2D31" CornerRadius="8" Padding="16,14" Margin="0,0,0,8">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Disable Audio Enhancements"
+                                               Foreground="White" FontSize="14"/>
+                                    <TextBlock Foreground="#80848E" FontSize="11"
+                                               TextWrapping="Wrap" Margin="0,2,0,0">
+                                        <Run Text="Disables driver-level noise suppression, echo cancellation and microphone boost at the system level. "/>
+                                        <Run Text="May affect quality in noisy environments." Foreground="#FAA61A"/>
+                                    </TextBlock>
+                                </StackPanel>
+                                <ui:ToggleSwitch x:Name="ToggleDisableAudioEnhancements" Grid.Column="1"
+                                                 VerticalAlignment="Center" Margin="12,0,0,0"/>
+                            </Grid>
+                        </Border>
+
                     </StackPanel>
 
                     <!-- ── Notifications Page ── -->

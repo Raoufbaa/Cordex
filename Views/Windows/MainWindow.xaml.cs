@@ -415,6 +415,7 @@ public partial class MainWindow : Window
             Dispatcher.Invoke(InjectScreenSharePicker);
             Dispatcher.Invoke(InjectWebRtcRecoveryScript);
             Dispatcher.Invoke(InjectVoiceStateObserver);
+            Dispatcher.Invoke(InjectMicAgcPatch);
         }
     }
 
@@ -471,6 +472,77 @@ public partial class MainWindow : Window
             _audio.Start();
         else
             _audio.Stop();
+    }
+
+    /// <summary>
+    /// Patches navigator.mediaDevices.getUserMedia so that every audio
+    /// capture request from Discord's WebRTC stack has
+    ///   autoGainControl : false
+    ///   noiseSuppression : false   (when DisableMicAgc is on)
+    ///   echoCancellation : false   (when DisableMicAgc is on)
+    /// injected into its audio constraints.  This eliminates Chromium's
+    /// built-in software AGC that silently raises / lowers the mic level.
+    ///
+    /// The patch is a no-op guard so re-injecting on navigation is safe.
+    /// When the setting is OFF the original getUserMedia is restored.
+    /// </summary>
+    private void InjectMicAgcPatch()
+    {
+        bool disable = SettingsManager.Current.DisableMicAgc;
+
+        // language=javascript
+        string script = $@"
+(function() {{
+    // ── Cordex Mic AGC Patch ─────────────────────────────────────────
+    var DISABLE_AGC = {(disable ? "true" : "false")};
+
+    // Restore native if feature is off and we previously patched
+    if (!DISABLE_AGC) {{
+        if (window.__cordexOrigGetUserMedia) {{
+            navigator.mediaDevices.getUserMedia =
+                window.__cordexOrigGetUserMedia;
+            window.__cordexOrigGetUserMedia = null;
+            window.__cordexMicAgcPatched    = false;
+            console.log('[Cordex] Mic AGC patch removed - auto-gain restored');
+        }}
+        return;
+    }}
+
+    // Already patched - nothing to do
+    if (window.__cordexMicAgcPatched) return;
+
+    var _origGUM = navigator.mediaDevices.getUserMedia.bind(
+                        navigator.mediaDevices);
+    window.__cordexOrigGetUserMedia = _origGUM;
+
+    navigator.mediaDevices.getUserMedia = async function(constraints) {{
+        try {{
+            if (constraints && constraints.audio) {{
+                var audioConstraints = (typeof constraints.audio === 'object')
+                    ? Object.assign({{}}, constraints.audio)
+                    : {{}};
+
+                // Force-disable all AGC / processing layers
+                audioConstraints.autoGainControl  = false;
+                audioConstraints.noiseSuppression = false;
+                audioConstraints.echoCancellation = false;
+
+                constraints = Object.assign({{}}, constraints,
+                    {{ audio: audioConstraints }});
+
+                console.log('[Cordex] getUserMedia: AGC/noise-suppression disabled');
+            }}
+        }} catch(e) {{
+            console.warn('[Cordex] Failed to patch audio constraints:', e);
+        }}
+        return _origGUM(constraints);
+    }};
+
+    window.__cordexMicAgcPatched = true;
+    console.log('[Cordex] Mic AGC patch active - auto-gain control disabled');
+}})();
+";
+        ExecuteScript(script);
     }
 
     private void InjectVoiceStateObserver()

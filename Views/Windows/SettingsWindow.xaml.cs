@@ -71,6 +71,11 @@ public partial class SettingsWindow : FluentWindow
         SliderVoiceThreshold.Value        = s.VoiceActivityThreshold;
         TxtVoiceThreshold.Text            = $"{s.VoiceActivityThreshold}%";
 
+        // Load mic AGC / ducking settings
+        ToggleDisableMicAgc.IsChecked             = s.DisableMicAgc;
+        ToggleDisableWinDucking.IsChecked         = s.DisableWinDucking;
+        ToggleDisableAudioEnhancements.IsChecked  = s.DisableAudioEnhancements;
+
         // Load notifications
         ToggleShowNotifications.IsChecked  = s.ShowNotifications;
         ToggleNotificationSounds.IsChecked = s.NotificationSounds;
@@ -327,6 +332,11 @@ public partial class SettingsWindow : FluentWindow
         s.AutomaticallyMute      = ToggleAutoMute.IsChecked == true;
         s.VoiceActivityThreshold = (int)SliderVoiceThreshold.Value;
 
+        // Save mic AGC / ducking settings
+        s.DisableMicAgc            = ToggleDisableMicAgc.IsChecked == true;
+        s.DisableWinDucking        = ToggleDisableWinDucking.IsChecked == true;
+        s.DisableAudioEnhancements = ToggleDisableAudioEnhancements.IsChecked == true;
+
         // Save notifications
         s.ShowNotifications  = ToggleShowNotifications.IsChecked == true;
         s.NotificationSounds = ToggleNotificationSounds.IsChecked == true;
@@ -370,6 +380,9 @@ public partial class SettingsWindow : FluentWindow
         SettingsManager.Save();
         KeybindsSaved?.Invoke();
         SettingsChanged?.Invoke();
+
+        // Apply mic AGC settings immediately
+        Cordex.Core.MicAgcManager.Apply();
 
         // Apply performance settings immediately
         if (s.EnablePerformanceLimits)
