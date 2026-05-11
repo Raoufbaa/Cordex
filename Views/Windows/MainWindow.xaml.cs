@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using CefSharp;
+using CefSharp.Enums;
 using CefSharp.Wpf;
 using Cordex.Core;
 
@@ -127,7 +128,11 @@ public partial class MainWindow : Window
         Browser.PermissionHandler = new MediaPermissionHandler();
         Browser.LifeSpanHandler   = new DiscordLifeSpanHandler();
         Browser.DownloadHandler   = new DiscordDownloadHandler();
+        Browser.DragHandler       = new DiscordDragHandler();
         Browser.BrowserSettings   = new BrowserSettings { WindowlessFrameRate = 60 };
+        
+        // Enable drag and drop support
+        Browser.AllowDrop = true;
         
         Browser.JavascriptObjectRepository.Settings.LegacyBindingEnabled = true;
         Browser.JavascriptObjectRepository.Register("cordexDesktop", new DesktopSourceProvider(), BindingOptions.DefaultBinder);
@@ -416,6 +421,7 @@ public partial class MainWindow : Window
             Dispatcher.Invoke(InjectWebRtcRecoveryScript);
             Dispatcher.Invoke(InjectVoiceStateObserver);
             Dispatcher.Invoke(InjectMicAgcPatch);
+            Dispatcher.Invoke(InjectDragDropFix);
         }
     }
 
@@ -1077,6 +1083,33 @@ public partial class MainWindow : Window
         ExecuteScript(script);
     }
 
+    private void InjectDragDropFix()
+    {
+        const string script = @"
+(function() {
+    if (window.__cordexDragDropFixed) return;
+    window.__cordexDragDropFixed = true;
+    
+    // Force enable drag and drop by ensuring draggable attribute is respected
+    document.addEventListener('dragstart', function(e) {
+        // Allow all drag operations
+        if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = 'all';
+        }
+    }, true);
+    
+    document.addEventListener('dragover', function(e) {
+        // Prevent default to allow drop
+        e.preventDefault();
+        if (e.dataTransfer) {
+            e.dataTransfer.dropEffect = 'move';
+        }
+    }, true);
+})();
+";
+        ExecuteScript(script);
+    }
+
     private void ApplyReducedMotion()
     {
         ExecuteScript(@"
@@ -1410,4 +1443,16 @@ public class DiscordDownloadHandler : CefSharp.Handler.DownloadHandler
     protected override void OnDownloadUpdated(
         IWebBrowser cwb, IBrowser browser,
         DownloadItem downloadItem, IDownloadItemCallback callback) { }
+}
+
+
+// ── DiscordDragHandler ───────────────────────────────────────────────────────
+public class DiscordDragHandler : CefSharp.Handler.DragHandler
+{
+    protected override bool OnDragEnter(
+        IWebBrowser cwb, IBrowser browser, IDragData dragData, DragOperationsMask mask)
+    {
+        // Allow all drag operations within Discord
+        return false;
+    }
 }
