@@ -70,8 +70,8 @@ jobs:
 
     - name: Download WebView2 Runtime Bootstrapper
       run: |
-        Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/?linkid=2124701" -OutFile "MicrosoftEdgeWebview2Setup.exe"
-      shell: powershell
+        curl -L -o MicrosoftEdgeWebview2Setup.exe "https://go.microsoft.com/fwlink/?linkid=2124701"
+      shell: cmd
 
     - name: Compile Inno Setup Script
       uses: Minionguyjpro/Inno-Setup-Action@v1.2.2

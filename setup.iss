@@ -135,7 +135,7 @@ begin
         begin
           if ResultCode <> 0 then
           begin
-            MsgBox('WebView2 Runtime installation returned exit code ' + IntToStr(ResultCode) + '. The application might not run properly.', mbWarning, MB_OK);
+            MsgBox('WebView2 Runtime installation returned exit code ' + IntToStr(ResultCode) + '. The application might not run properly.', mbError, MB_OK);
           end;
         end
         else
