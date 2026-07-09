@@ -11,12 +11,22 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+    outputs:
+      app_version: ${{ steps.get_version.outputs.version }}
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+
+    - name: Extract Version
+      id: get_version
+      run: |
+        [xml]$csproj = Get-Content Cordex.csproj
+        $version = $csproj.Project.PropertyGroup.Version
+        echo "version=$version" >> $env:GITHUB_OUTPUT
+      shell: powershell
 
     - name: Install .NET 10
       uses: actions/setup-dotnet@v4
@@ -36,11 +46,38 @@ jobs:
     - name: Publish
       run: dotnet publish Cordex.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=false --output ./publish
 
+    - name: Update App_version.json
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        $version = "${{ steps.get_version.outputs.version }}"
+        $jsonPath = "docs/App_version.json"
+        if (Test-Path $jsonPath) {
+          $json = Get-Content -Path $jsonPath -Raw | ConvertFrom-Json
+          if ($json.SupportedVersions -notcontains $version) {
+            $json.SupportedVersions += $version
+            $jsonString = ConvertTo-Json -InputObject $json -Depth 10
+            [System.IO.File]::WriteAllText($jsonPath, $jsonString)
+            
+            # Configure git, commit and push changes
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git add $jsonPath
+            git commit -m "chore: update App_version.json to version $version [skip ci]"
+            git push origin HEAD
+          }
+        }
+      shell: powershell
+
+    - name: Download WebView2 Runtime Bootstrapper
+      run: |
+        Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/?linkid=2124701" -OutFile "MicrosoftEdgeWebview2Setup.exe"
+      shell: powershell
+
     - name: Compile Inno Setup Script
       uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
       with:
         path: setup.iss
-        options: /O+
+        options: /O+ /DMyAppVersion=${{ steps.get_version.outputs.version }}
 
     - name: Upload Windows Artifact
       uses: actions/upload-artifact@v4
@@ -65,7 +102,7 @@ jobs:
     - name: Generate version tag
       id: tag_version
       run: |
-        version="v1.1.${{ github.run_number }}"
+        version="v${{ needs.build.outputs.app_version }}"
         echo "version=$version" >> $GITHUB_OUTPUT
 
     - name: Create Versioned Release

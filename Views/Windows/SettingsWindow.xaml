@@ -637,7 +637,7 @@
                                 </CheckBox>
 
                                 <!-- Sticker Packs -->
-                                <CheckBox x:Name="ToggleBlockStickerPacks" Margin="0,0,0,0">
+                                <CheckBox x:Name="ToggleBlockStickerPacks" Margin="0,0,0,16">
                                     <StackPanel>
                                         <TextBlock Foreground="#DCDDDE" FontSize="13">
                                             <Run Text="Block sticker pack downloads ("/>
@@ -645,6 +645,23 @@
                                             <Run Text=")."/>
                                         </TextBlock>
                                         <TextBlock Text="Stops downloading sticker pack metadata. Useful if you never browse or use Discord stickers."
+                                                   Foreground="#4E5058" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </CheckBox>
+
+                                <!-- Spotify & Metadata APIs -->
+                                <CheckBox x:Name="ToggleBlockSpotifyAndMetadata" Margin="0,0,0,0">
+                                    <StackPanel>
+                                        <TextBlock Foreground="#DCDDDE" FontSize="13">
+                                            <Run Text="Block Spotify &amp; game metadata ("/>
+                                            <Run Text=" api.spotify.com " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=", "/>
+                                            <Run Text=" games.json " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=", "/>
+                                            <Run Text=" storefront-config " Background="#1E1F22" Foreground="#A3A6AA"/>
+                                            <Run Text=")."/>
+                                        </TextBlock>
+                                        <TextBlock Text="Blocks Spotify Rich Presence connection, detectables games databases, Nitro storefront, billing offers, and application profile queries."
                                                    Foreground="#4E5058" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
                                     </StackPanel>
                                 </CheckBox>
@@ -1200,12 +1217,12 @@
                                 <TextBlock x:Name="VersionTextBlock" Text="Version 1.1.3"
                                            Foreground="#80848E" FontSize="13" Margin="0,4,0,0"/>
                                 <Rectangle Height="1" Fill="#3A3C40" Margin="0,16"/>
-                                <TextBlock Text="A high-performance Discord client built with .NET 10, CefSharp Chromium, and WPF-UI."
+                                <TextBlock Text="A high-performance Discord client built with .NET 10, Edge WebView2, and WPF-UI."
                                            Foreground="#B5BAC1" FontSize="13" TextWrapping="Wrap"/>
                                 <Rectangle Height="1" Fill="#3A3C40" Margin="0,16"/>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="Engine:"    Foreground="#80848E" FontSize="12" Width="80"/>
-                                    <TextBlock Text="Chromium via CefSharp 120" Foreground="White" FontSize="12"/>
+                                    <TextBlock Text="Microsoft Edge WebView2" Foreground="White" FontSize="12"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Framework:" Foreground="#80848E" FontSize="12" Width="80"/>

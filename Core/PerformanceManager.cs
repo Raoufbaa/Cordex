@@ -68,9 +68,9 @@ public static class PerformanceManager
     public static bool RequiresMonitoring()
     {
         var settings = SettingsManager.Current;
-        int minRamMB = Math.Max(200, settings.MaxRamMB);
+        int minRamMB = Math.Max(300, settings.MaxRamMB);
         return settings.EnablePerformanceLimits &&
-               (minRamMB >= 200 || settings.MaxCpuPercent < 100);
+               (minRamMB >= 300 || settings.MaxCpuPercent < 100);
     }
 
     public static TimeSpan GetMonitoringInterval()
@@ -78,7 +78,7 @@ public static class PerformanceManager
         var settings = SettingsManager.Current;
         
         // If RAM limits are active, check very frequently (every 15s)
-        if (settings.MaxRamMB >= 200 && settings.MaxRamMB < 500)
+        if (settings.MaxRamMB >= 300 && settings.MaxRamMB < 500)
             return TimeSpan.FromSeconds(15);
         
         // Use 60 second interval for moderate RAM limits
@@ -106,7 +106,7 @@ public static class PerformanceManager
 
             // Enforce minimum limits
             int minCpuCores = Math.Max(2, settings.MaxCpuCores);
-            int minRamMB = Math.Max(200, settings.MaxRamMB);
+            int minRamMB = Math.Max(300, settings.MaxRamMB);
             
             // Update settings if they're below minimum
             if (settings.MaxCpuCores < 2)
@@ -114,9 +114,9 @@ public static class PerformanceManager
                 settings.MaxCpuCores = 2;
                 SettingsManager.Save();
             }
-            if (settings.MaxRamMB < 200)
+            if (settings.MaxRamMB < 300)
             {
-                settings.MaxRamMB = 200;
+                settings.MaxRamMB = 300;
                 SettingsManager.Save();
             }
 
@@ -154,7 +154,7 @@ public static class PerformanceManager
             }
 
             // Set HARD RAM limit immediately
-            if (minRamMB >= 200)
+            if (minRamMB >= 300)
             {
                 try
                 {
@@ -184,8 +184,8 @@ public static class PerformanceManager
                 }
             }
 
-            // Apply settings to CefSharp child processes
-            ApplyCefSharpProcessLimits();
+            // Apply settings to WebView2 child processes
+            ApplyWebView2ProcessLimits();
         }
         catch (Exception ex)
         {
@@ -194,7 +194,7 @@ public static class PerformanceManager
         }
     }
 
-    private static void ApplyCefSharpProcessLimits()
+    private static void ApplyWebView2ProcessLimits()
     {
         var settings = SettingsManager.Current;
 
@@ -204,15 +204,15 @@ public static class PerformanceManager
         try
         {
             var mainProcess = Process.GetCurrentProcess();
-            var cefProcesses = GetCefSharpProcesses();
+            var webViewProcesses = GetWebView2Processes();
 
-            foreach (var cefProc in cefProcesses)
+            foreach (var webViewProc in webViewProcesses)
             {
                 try
                 {
-                    if (!_trackedCefProcessIds.Contains(cefProc.Id))
+                    if (!_trackedCefProcessIds.Contains(webViewProc.Id))
                     {
-                        _trackedCefProcessIds.Add(cefProc.Id);
+                        _trackedCefProcessIds.Add(webViewProc.Id);
                     }
 
                     // Apply CPU affinity - STRICT
@@ -223,7 +223,7 @@ public static class PerformanceManager
                         // Ensure minimum 4 cores (0-3) in affinity mask
                         long minAffinityMask = 0x0F; // Binary 1111 = cores 0,1,2,3
                         long effectiveMask = settings.CpuAffinityMask | minAffinityMask;
-                        SetProcessAffinityMask(cefProc.Handle, new IntPtr(effectiveMask));
+                        SetProcessAffinityMask(webViewProc.Handle, new IntPtr(effectiveMask));
                     }
                     else if (minCpuCores > 0 && minCpuCores < Environment.ProcessorCount)
                     {
@@ -232,42 +232,44 @@ public static class PerformanceManager
                         {
                             mask |= (1L << i);
                         }
-                        SetProcessAffinityMask(cefProc.Handle, new IntPtr(mask));
+                        SetProcessAffinityMask(webViewProc.Handle, new IntPtr(mask));
                     }
 
-                    // Apply HARD RAM limit to each CefSharp process
-                    int minRamMB = Math.Max(200, settings.MaxRamMB);
-                    if (minRamMB >= 200)
+                    // Apply HARD RAM limit to each WebView2 process
+                    int minRamMB = Math.Max(300, settings.MaxRamMB);
+                    if (minRamMB >= 300)
                     {
-                        // Each CefSharp process gets a portion of the total limit
-                        int cefCount = cefProcesses.Count;
+                        // Each WebView2 process gets a portion of the total limit
+                        int webViewCount = webViewProcesses.Count;
                         long totalBytes = minRamMB * 1024L * 1024L;
-                        long cefTotalBytes = (long)(totalBytes * 0.7); // 70% for all CefSharp
-                        long perCefBytes = cefCount > 0 ? cefTotalBytes / cefCount : cefTotalBytes;
+                        long webViewTotalBytes = (long)(totalBytes * 0.7); // 70% for all WebView2
+                        long perWebViewBytes = webViewCount > 0 ? webViewTotalBytes / webViewCount : webViewTotalBytes;
                         long minBytes = 15 * 1024 * 1024; // 15MB minimum
                         
-                        SetProcessWorkingSetSize(cefProc.Handle, new IntPtr(minBytes), new IntPtr(perCefBytes));
+                        SetProcessWorkingSetSize(webViewProc.Handle, new IntPtr(minBytes), new IntPtr(perWebViewBytes));
                     }
 
                     // Set process priority
                     if (settings.ReduceBackgroundActivity)
                     {
-                        cefProc.PriorityClass = ProcessPriorityClass.BelowNormal;
+                        webViewProc.PriorityClass = ProcessPriorityClass.BelowNormal;
                     }
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"Failed to apply limits to CefSharp process {cefProc.Id}: {ex.Message}");
+                    Debug.WriteLine($"Failed to apply limits to WebView2 process {webViewProc.Id}: {ex.Message}");
                 }
             }
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Failed to apply CefSharp process limits: {ex.Message}");
+            Debug.WriteLine($"Failed to apply WebView2 process limits: {ex.Message}");
         }
     }
 
-    private static List<Process> GetCefSharpProcesses()
+    public static int WebView2BrowserProcessId { get; set; }
+
+    private static List<Process> GetWebView2Processes()
     {
         try
         {
@@ -296,6 +298,18 @@ public static class PerformanceManager
             {
                 var mainProcess = Process.GetCurrentProcess();
                 var childIds = ProcessHelper.GetChildProcessIds(mainProcess.Id);
+
+                // Also gather child processes of our WebView2 browser process
+                if (WebView2BrowserProcessId != 0)
+                {
+                    childIds.Add(WebView2BrowserProcessId);
+                    var webViewChildren = ProcessHelper.GetChildProcessIds(WebView2BrowserProcessId);
+                    foreach (var id in webViewChildren)
+                    {
+                        childIds.Add(id);
+                    }
+                }
+
                 var allProcesses = Process.GetProcesses();
 
                 foreach (var proc in allProcesses)
@@ -312,9 +326,9 @@ public static class PerformanceManager
                         }
                         if (alreadyTracked) continue;
 
-                        if (childIds.Contains(proc.Id) || 
-                            proc.ProcessName.Contains("CefSharp", StringComparison.OrdinalIgnoreCase) ||
-                            proc.ProcessName.Contains("BrowserSubprocess", StringComparison.OrdinalIgnoreCase))
+                        // Only track processes that are part of our application's process tree
+                        if (childIds.Contains(proc.Id) && 
+                            proc.ProcessName.Contains("msedgewebview2", StringComparison.OrdinalIgnoreCase))
                         {
                             _cachedCefProcesses.Add(proc);
                         }
@@ -327,7 +341,7 @@ public static class PerformanceManager
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Failed to get CefSharp processes: {ex.Message}");
+            Debug.WriteLine($"Failed to get WebView2 processes: {ex.Message}");
         }
 
         return _cachedCefProcesses.ToList();
@@ -343,16 +357,16 @@ public static class PerformanceManager
         try
         {
             var mainProcess = Process.GetCurrentProcess();
-            var cefProcesses = GetCefSharpProcesses();
+            var webViewProcesses = GetWebView2Processes();
 
             if (settings.MaxRamMB >= 100)
             {
-                MonitorAndEnforceRamLimit(mainProcess, cefProcesses, settings);
+                MonitorAndEnforceRamLimit(mainProcess, webViewProcesses, settings);
             }
 
             if (settings.MaxCpuPercent < 100)
             {
-                MonitorAndEnforceCpuLimit(mainProcess, cefProcesses, settings);
+                MonitorAndEnforceCpuLimit(mainProcess, webViewProcesses, settings);
             }
         }
         catch (Exception ex)
@@ -364,12 +378,12 @@ public static class PerformanceManager
     public static void MonitorAndEnforceRamLimit()
     {
         var settings = SettingsManager.Current;
-        int minRamMB = Math.Max(200, settings.MaxRamMB);
+        int minRamMB = Math.Max(300, settings.MaxRamMB);
 
-        if (!settings.EnablePerformanceLimits || minRamMB < 200)
+        if (!settings.EnablePerformanceLimits || minRamMB < 300)
             return;
 
-        MonitorAndEnforceRamLimit(Process.GetCurrentProcess(), GetCefSharpProcesses(), settings);
+        MonitorAndEnforceRamLimit(Process.GetCurrentProcess(), GetWebView2Processes(), settings);
     }
 
     public static void MonitorAndEnforceCpuLimit()
@@ -379,10 +393,10 @@ public static class PerformanceManager
         if (!settings.EnablePerformanceLimits || settings.MaxCpuPercent >= 100)
             return;
 
-        MonitorAndEnforceCpuLimit(Process.GetCurrentProcess(), GetCefSharpProcesses(), settings);
+        MonitorAndEnforceCpuLimit(Process.GetCurrentProcess(), GetWebView2Processes(), settings);
     }
 
-    private static void MonitorAndEnforceRamLimit(Process mainProcess, IReadOnlyList<Process> cefProcesses, AppSettings settings)
+    private static void MonitorAndEnforceRamLimit(Process mainProcess, IReadOnlyList<Process> webViewProcesses, AppSettings settings)
     {
         try
         {
@@ -390,12 +404,12 @@ public static class PerformanceManager
             mainProcess.Refresh();
             long totalRamMB = mainProcess.WorkingSet64 / (1024 * 1024);
 
-            foreach (var cefProc in cefProcesses)
+            foreach (var webViewProc in webViewProcesses)
             {
                 try
                 {
-                    cefProc.Refresh();
-                    totalRamMB += cefProc.WorkingSet64 / (1024 * 1024);
+                    webViewProc.Refresh();
+                    totalRamMB += webViewProc.WorkingSet64 / (1024 * 1024);
                 }
                 catch
                 {
@@ -403,8 +417,8 @@ public static class PerformanceManager
                 }
             }
 
-            // Enforce minimum RAM limit of 200MB
-            int effectiveMaxRamMB = Math.Max(200, settings.MaxRamMB);
+            // Enforce minimum RAM limit of 300MB
+            int effectiveMaxRamMB = Math.Max(300, settings.MaxRamMB);
             
             // Start trimming at 80% of limit to be proactive
             long trimThresholdMB = (long)(effectiveMaxRamMB * 0.8);
@@ -418,13 +432,13 @@ public static class PerformanceManager
                     return;
                 }
 
-                int processCount = cefProcesses.Count + 1;
+                int processCount = webViewProcesses.Count + 1;
                 long targetTotalBytes = effectiveMaxRamMB * 1024L * 1024L;
                 
-                // Allocate 30% to main process, 70% to CefSharp processes
+                // Allocate 30% to main process, 70% to WebView2 processes
                 long mainTargetBytes = (long)(targetTotalBytes * 0.3);
-                long cefTotalTargetBytes = (long)(targetTotalBytes * 0.7);
-                long cefPerProcessBytes = cefProcesses.Count > 0 ? cefTotalTargetBytes / cefProcesses.Count : 0;
+                long webViewTotalTargetBytes = (long)(targetTotalBytes * 0.7);
+                long webViewPerProcessBytes = webViewProcesses.Count > 0 ? webViewTotalTargetBytes / webViewProcesses.Count : 0;
                 
                 long minPerProcessBytes = 15 * 1024 * 1024; // Minimum 15MB per process
 
@@ -447,31 +461,31 @@ public static class PerformanceManager
                     Debug.WriteLine($"Failed to trim main process: {ex.Message}");
                 }
 
-                // Aggressively trim CefSharp processes
-                foreach (var cefProc in cefProcesses)
+                // Aggressively trim WebView2 processes
+                foreach (var webViewProc in webViewProcesses)
                 {
                     try
                     {
-                        cefProc.Refresh();
-                        long currentBytes = cefProc.WorkingSet64;
-                        long cefTargetBytes = Math.Max(minPerProcessBytes, cefPerProcessBytes);
+                        webViewProc.Refresh();
+                        long currentBytes = webViewProc.WorkingSet64;
+                        long webViewTargetBytes = Math.Max(minPerProcessBytes, webViewPerProcessBytes);
 
-                        if (currentBytes > cefTargetBytes)
+                        if (currentBytes > webViewTargetBytes)
                         {
                             // Empty working set then set hard limits
-                            EmptyWorkingSet(cefProc.Handle);
-                            SetProcessWorkingSetSize(cefProc.Handle, new IntPtr(minPerProcessBytes), new IntPtr(cefTargetBytes));
+                            EmptyWorkingSet(webViewProc.Handle);
+                            SetProcessWorkingSetSize(webViewProc.Handle, new IntPtr(minPerProcessBytes), new IntPtr(webViewTargetBytes));
                         }
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"Failed to trim CefSharp process {cefProc.Id}: {ex.Message}");
+                        Debug.WriteLine($"Failed to trim WebView2 process {webViewProc.Id}: {ex.Message}");
                     }
                 }
             }
             else
             {
-                ApplyCefSharpProcessLimits();
+                ApplyWebView2ProcessLimits();
             }
         }
         catch (Exception ex)
@@ -480,12 +494,12 @@ public static class PerformanceManager
         }
     }
 
-    private static void MonitorAndEnforceCpuLimit(Process mainProcess, IReadOnlyList<Process> cefProcesses, AppSettings settings)
+    private static void MonitorAndEnforceCpuLimit(Process mainProcess, IReadOnlyList<Process> webViewProcesses, AppSettings settings)
     {
         try
         {
-            var allProcesses = new List<Process>(cefProcesses.Count + 1) { mainProcess };
-            allProcesses.AddRange(cefProcesses);
+            var allProcesses = new List<Process>(webViewProcesses.Count + 1) { mainProcess };
+            allProcesses.AddRange(webViewProcesses);
 
             double totalCpuUsage = 0;
             var cpuUsageByProcess = new Dictionary<int, double>(allProcesses.Count);
@@ -506,7 +520,6 @@ public static class PerformanceManager
 
             if (totalCpuUsage > settings.MaxCpuPercent)
             {
-
                 double excessPercent = totalCpuUsage - settings.MaxCpuPercent;
                 double throttleRatio = excessPercent / totalCpuUsage;
 
@@ -517,13 +530,13 @@ public static class PerformanceManager
                         if (!cpuUsageByProcess.TryGetValue(proc.Id, out double procCpuUsage) || procCpuUsage <= 1.0)
                             continue;
 
-                        // CRITICAL: Never throttle renderer processes to Idle during WebRTC connections
+                        // CRITICAL: Never throttle WebView2 processes to Idle during WebRTC connections
                         // DTLS handshakes are time-sensitive and will fail if CPU scheduling is delayed
-                        bool isRenderer = proc.ProcessName.Contains("CefSharp.BrowserSubprocess", StringComparison.OrdinalIgnoreCase);
+                        bool isRenderer = proc.ProcessName.Contains("msedgewebview2", StringComparison.OrdinalIgnoreCase);
                         
                         if (throttleRatio > 0.5)
                         {
-                            // Renderer processes: BelowNormal max (not Idle) to preserve WebRTC timing
+                            // WebView2 processes: BelowNormal max (not Idle) to preserve WebRTC timing
                             var targetPriority = isRenderer ? ProcessPriorityClass.BelowNormal : ProcessPriorityClass.Idle;
                             
                             if (proc.PriorityClass != targetPriority)

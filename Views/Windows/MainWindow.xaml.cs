@@ -3,9 +3,9 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
-using CefSharp;
-using CefSharp.Enums;
-using CefSharp.Wpf;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.Wpf;
+using System.Threading.Tasks;
 using Cordex.Core;
 
 namespace Cordex;
@@ -16,7 +16,6 @@ public partial class MainWindow : Window
     private readonly KeybindManager _keys  = new();
     private readonly AudioMonitor   _audio = new();
 
-    private static bool _cefInitialized;
     private MuteState   _muteState        = MuteState.Default;
     private bool        _isExiting        = false;
     private bool        _isInVoiceChannel = false;
@@ -112,7 +111,6 @@ public partial class MainWindow : Window
     // ── Constructor ──────────────────────────────────────────────────────────
     public MainWindow()
     {
-        InitializeCef();
         InitializeComponent();
 
         var area = SystemParameters.WorkArea;
@@ -123,27 +121,11 @@ public partial class MainWindow : Window
             Icon = new System.Windows.Media.Imaging.BitmapImage(
                 new Uri(IconPath, UriKind.Absolute));
 
-        Browser.RequestHandler    = new DiscordRequestHandler();
-        Browser.MenuHandler       = new NoContextMenuHandler();
-        Browser.PermissionHandler = new MediaPermissionHandler();
-        Browser.LifeSpanHandler   = new DiscordLifeSpanHandler();
-        Browser.DownloadHandler   = new DiscordDownloadHandler();
-        Browser.DragHandler       = new DiscordDragHandler();
-        Browser.BrowserSettings   = new BrowserSettings { WindowlessFrameRate = 60 };
-        
-        // Enable drag and drop support
-        Browser.AllowDrop = true;
-        
-        Browser.JavascriptObjectRepository.Settings.LegacyBindingEnabled = true;
-        Browser.JavascriptObjectRepository.Register("cordexDesktop", new DesktopSourceProvider(), BindingOptions.DefaultBinder);
-
-        Browser.Address           = "https://discord.com/app";
-        Browser.JavascriptMessageReceived += OnJavascriptMessageReceived;
-        Browser.LoadingStateChanged       += OnBrowserLoadingStateChanged;
-
         Loaded            += OnWindowLoaded;
         SourceInitialized += OnSourceInitialized;
         StateChanged      += OnStateChanged;
+
+        _ = InitializeWebViewAsync();
     }
 
     // ── Win32 Hook ───────────────────────────────────────────────────────────
@@ -254,127 +236,273 @@ public partial class MainWindow : Window
         return IntPtr.Zero;
     }
 
-    // ── CefSharp Init ────────────────────────────────────────────────────────
-    private static void InitializeCef()
+    // ── WebView2 Init & Event Handlers ────────────────────────────────────────
+    private async Task InitializeWebViewAsync()
     {
-        if (_cefInitialized) return;
-        SessionManager.EnsureDirectories();
-
-        var settings = new CefSettings
+        try
         {
-            CachePath   = SessionManager.CacheDirectory,
-            LogSeverity = LogSeverity.Disable,
-            UserAgent   =
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-                "AppleWebKit/537.36 (KHTML, like Gecko) " +
-                "Chrome/120.0.0.0 Safari/537.36",
-            WindowlessRenderingEnabled = false
-        };
+            SessionManager.EnsureDirectories();
 
-        bool hwAccel = SettingsManager.Current.HardwareAcceleration;
-
-        settings.CefCommandLineArgs.Add("enable-media-stream",                "1");
-        settings.CefCommandLineArgs.Add("enable-usermedia-screen-capturing",  "1");
-        settings.CefCommandLineArgs.Add("enable-usermedia-screen-capture",    "1");
-        settings.CefCommandLineArgs.Add("autoplay-policy",                    "no-user-gesture-required");
-        settings.CefCommandLineArgs.Add("enforce-webrtc-ip-permission-check", "0");
-        settings.CefCommandLineArgs.Add("no-sandbox",                         "1");
-
-        if (hwAccel)
-        {
-            settings.CefCommandLineArgs.Add("enable-gpu",                      "1");
-            settings.CefCommandLineArgs.Add("enable-gpu-rasterization",        "1");
-            settings.CefCommandLineArgs.Add("enable-accelerated-video-decode", "1");
-            settings.CefCommandLineArgs.Add("enable-zero-copy",                "1");
-        }
-        else
-        {
-            settings.CefCommandLineArgs.Add("use-gl",                           "swiftshader");
-            settings.CefCommandLineArgs.Add("disable-accelerated-video-decode", "1");
-        }
-
-        settings.CefCommandLineArgs.Add("force-color-profile", "srgb");
-
-        // ALWAYS disable timer throttling — WebRTC voice keepalives and DTLS
-        // heartbeats MUST fire on schedule even when the window is minimized
-        // or occluded, otherwise connections stall at DTLS_CONNECTING.
-        settings.CefCommandLineArgs.Add("disable-background-timer-throttling",    "1");
-        settings.CefCommandLineArgs.Add("disable-backgrounding-occluded-windows", "1");
-
-        if (SettingsManager.Current.ReduceBackgroundActivity)
-        {
-            settings.CefCommandLineArgs.Add("enable-ipc-flooding-protection", "1");
-        }
-        else
-        {
-            settings.CefCommandLineArgs.Add("disable-renderer-backgrounding",  "1");
-            settings.CefCommandLineArgs.Add("disable-ipc-flooding-protection", "1");
-        }
-
-        settings.CefCommandLineArgs.Add("enable-quic",               "1");
-        settings.CefCommandLineArgs.Add("disable-pdf-extension",     "1");
-        settings.CefCommandLineArgs.Add("disable-plugins-discovery", "1");
-        settings.CefCommandLineArgs.Add("disable-spell-checking",    "1");
-        settings.CefCommandLineArgs.Add("disable-print-preview",     "1");
-        settings.CefCommandLineArgs.Add("disable-component-update",  "1");
-        settings.CefCommandLineArgs.Add("disable-logging",           "1");
-        settings.CefCommandLineArgs.Add("disable-metrics",           "1");
-        settings.CefCommandLineArgs.Add("disable-metrics-reporter",  "1");
-        
-        // WebRTC network resilience for high-latency/packet-loss scenarios
-        settings.CefCommandLineArgs.Add("webrtc-max-start-bitrate-kbps",         "2500");
-        settings.CefCommandLineArgs.Add("webrtc-max-cpu-consumption-percentage", "100");
-        settings.CefCommandLineArgs.Add("webrtc-stun-probe-trial",               "Enabled");
-        settings.CefCommandLineArgs.Add("force-fieldtrials",                     "WebRTC-FlexFEC-03-Advertised/Enabled/");
-
-
-        settings.CefCommandLineArgs.Add("disable-features",
-            "WebRtcHideLocalIpsWithMdns," +
-            "InterestFeedContentSuggestions," +
-            "BlinkGenPropertyTrees," +
-            "SafeBrowsing");
-
-        settings.CefCommandLineArgs.Add("enable-features",
-            "AudioWorkletThreadRealtimePriority," +
-            "WebAssemblySimd," +
-            "WebAssemblyThreads," +
-            "MediaRouter");
-
-        if (SettingsManager.Current.EnablePerformanceLimits)
-        {
-            if (SettingsManager.Current.MaxRamMB >= 100)
+            var options = new CoreWebView2EnvironmentOptions();
+            var args = new List<string>
             {
-                int  maxRamMB    = SettingsManager.Current.MaxRamMB;
-                int  jsHeapLimit = (maxRamMB * 40) / 100;
-                long diskCache   = Math.Min(100 * 1024 * 1024, maxRamMB * 1024L * 1024L / 2);
-                long mediaCache  = Math.Min(50  * 1024 * 1024, maxRamMB * 1024L * 512L);
+                "--autoplay-policy=no-user-gesture-required",
+                "--disable-background-timer-throttling",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-renderer-backgrounding",
+                "--disable-features=WebRtcHideLocalIpsWithMdns,InterestFeedContentSuggestions,BlinkGenPropertyTrees,SafeBrowsing",
+                "--enable-features=AudioWorkletThreadRealtimePriority,WebAssemblySimd,WebAssemblyThreads,MediaRouter",
+                "--disable-plugins-discovery",
+                "--disable-print-preview",
+                "--disable-spell-checking",
+                "--webrtc-max-start-bitrate-kbps=2500",
 
-                settings.CefCommandLineArgs.Add("renderer-process-limit", "3");
-                settings.CefCommandLineArgs.Add("max-old-space-size",     jsHeapLimit.ToString());
-                settings.CefCommandLineArgs.Add("disk-cache-size",        diskCache.ToString());
-                settings.CefCommandLineArgs.Add("media-cache-size",       mediaCache.ToString());
+                // Aggressive memory optimization arguments
+                "--disable-extensions",
+                "--disable-component-update",
+                "--disable-background-networking",
+                "--disable-sync",
+                "--disable-default-apps",
+                "--disable-domain-reliability",
+                "--disable-logging",
+                "--disable-breakpad",
+                "--memory-pressure-thresholds=1"
+            };
+
+            var s = SettingsManager.Current;
+
+            if (!s.HardwareAcceleration)
+            {
+                args.Add("--disable-gpu");
+                args.Add("--disable-gpu-rasterization");
+                args.Add("--disable-accelerated-video-decode");
+            }
+            else
+            {
+                args.Add("--enable-gpu-rasterization");
+                args.Add("--enable-accelerated-video-decode");
+                args.Add("--enable-zero-copy");
             }
 
-            settings.CefCommandLineArgs.Add("max-gum-fps",  "60");
-            settings.CefCommandLineArgs.Add("disable-sync", "1");
+            if (s.EnablePerformanceLimits)
+            {
+                args.Add("--renderer-process-limit=1"); // Enforce single renderer process for maximum memory savings
+                if (s.MaxRamMB >= 100)
+                {
+                    int jsHeapLimit = (s.MaxRamMB * 40) / 100;
+                    args.Add($"--js-flags=--max-old-space-size={jsHeapLimit}");
+                }
+            }
+
+            options.AdditionalBrowserArguments = string.Join(" ", args);
+
+            // Set up WebView2 environment using our existing cache directory and options
+            var env = await CoreWebView2Environment.CreateAsync(
+                browserExecutableFolder: null,
+                userDataFolder: SessionManager.CacheDirectory,
+                options: options
+            );
+
+            await Browser.EnsureCoreWebView2Async(env);
+            PerformanceManager.WebView2BrowserProcessId = (int)Browser.CoreWebView2.BrowserProcessId;
+
+            // Configure browser settings
+            Browser.CoreWebView2.Settings.UserAgent =
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/126.0.0.0 Safari/537.36";
+
+            Browser.CoreWebView2.Settings.AreDevToolsEnabled = true;
+            Browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+
+            // Wire up event handlers
+            Browser.CoreWebView2.PermissionRequested += OnPermissionRequested;
+            Browser.CoreWebView2.NewWindowRequested  += OnNewWindowRequested;
+            Browser.NavigationCompleted              += OnBrowserNavigationCompleted;
+            Browser.WebMessageReceived              += OnWebMessageReceived;
+
+            // Register web resource filter for blocking telemetry/tracking
+            Browser.CoreWebView2.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
+            Browser.CoreWebView2.WebResourceRequested += OnWebResourceRequested;
+
+            Browser.Source = new Uri("https://discord.com/app");
         }
-
-        Cef.Initialize(settings, performDependencyCheck: false, browserProcessHandler: null);
-        _cefInitialized = true;
-
-        ApplyWebRtcRequestContextPreferences();
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(
+                $"Failed to initialize WebView2:\n{ex}",
+                "Cordex Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error
+            );
+        }
     }
 
-    private static void ApplyWebRtcRequestContextPreferences()
+    private void OnPermissionRequested(object? sender, CoreWebView2PermissionRequestedEventArgs e)
     {
-        _ = Cef.UIThreadTaskFactory.StartNew(() =>
+        // Automatically allow mic and camera permissions
+        if (e.PermissionKind is CoreWebView2PermissionKind.Microphone 
+                             or CoreWebView2PermissionKind.Camera)
         {
-            var ctx = Cef.GetGlobalRequestContext();
-            if (ctx == null) return;
-            ctx.SetPreference("webrtc.ip_handling_policy",      "all_interfaces", out _);
-            ctx.SetPreference("webrtc.multiple_routes_enabled", true,             out _);
-            ctx.SetPreference("webrtc.nonproxied_udp_enabled",  true,             out _);
-        });
+            e.State = CoreWebView2PermissionState.Allow;
+            e.Handled = true;
+        }
+    }
+
+    private void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
+    {
+        string targetUrl = e.Uri;
+        if (string.IsNullOrEmpty(targetUrl) || targetUrl.StartsWith("about:"))
+            return;
+
+        string lower = targetUrl.ToLowerInvariant();
+
+        bool isInternal =
+            targetUrl.StartsWith("blob:")              ||
+            lower.Contains("cdn.discordapp.com")       ||
+            lower.Contains("media.discordapp.net")     ||
+            lower.Contains("discordapp.com/attachments")||
+            lower.Contains("discord.com/attachments")  ||
+            lower.Contains("discord.com/channels")     ||
+            lower.Contains("discord.com/invite")       ||
+            lower.Contains("discordapp.com")           ||
+            lower.Contains("discord.com");
+
+        if (isInternal)
+        {
+            // Open internal links in a pop-up window using a new WebView2 control
+            var popupWebview = new WebView2();
+            var win = new Window
+            {
+                Title                 = "Cordex",
+                Width                 = 1000,
+                Height                = 700,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                Content               = popupWebview
+            };
+
+            win.Loaded += async (s, ev) =>
+            {
+                try
+                {
+                    var env = await CoreWebView2Environment.CreateAsync(
+                        browserExecutableFolder: null,
+                        userDataFolder: SessionManager.CacheDirectory
+                    );
+                    await popupWebview.EnsureCoreWebView2Async(env);
+                    popupWebview.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                    popupWebview.Source = new Uri(targetUrl);
+                }
+                catch { }
+            };
+
+            win.Show();
+            e.Handled = true;
+        }
+        else if (targetUrl.StartsWith("http://") || targetUrl.StartsWith("https://"))
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName        = targetUrl,
+                    UseShellExecute = true
+                });
+            }
+            catch { }
+            e.Handled = true;
+        }
+    }
+
+    private static bool IsCdnUrl(string url) =>
+        url.Contains("cdn.discordapp.com")          ||
+        url.Contains("media.discordapp.net")        ||
+        url.Contains("discordapp.com/attachments")  ||
+        url.Contains("discord.com/attachments")     ||
+        url.Contains("images-ext-1.discordapp.net") ||
+        url.Contains("images-ext-2.discordapp.net");
+
+    private static bool IsActivityUrl(string url) =>
+        url.Contains("discord.com/activities")    ||
+        url.Contains("discordapp.com/activities") ||
+        url.Contains("youtube.com")               ||
+        url.Contains("ytimg.com")                 ||
+        url.Contains("googlevideo.com")           ||
+        url.Contains("googleapis.com");
+
+    private void OnWebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
+    {
+        var    s   = SettingsManager.Current;
+        string url = e.Request.Uri.ToLowerInvariant();
+
+        if (IsCdnUrl(url) || IsActivityUrl(url))
+            return;
+
+        bool cancel = false;
+
+        if (s.BlockFingerprinting && (url.Contains("api.js") || url.Contains("cdn-cgi")))
+            cancel = true;
+        else if (s.BlockTelemetry && (url.Contains("/science") || url.Contains("/tracing")))
+            cancel = true;
+        else if (s.BlockSentry && url.Contains("sentry"))
+            cancel = true;
+        else if (s.BlockTypingIndicator && url.Contains("/typing"))
+            cancel = true;
+        else if (s.BlockAnimatedAssets && (url.EndsWith(".gif") || url.Contains("/a_")))
+            cancel = true;
+        else if (s.BlockCrashReports && (url.Contains("errors.discord.com") || url.Contains("/report-")))
+            cancel = true;
+        else if (s.BlockExperiments && url.Contains("/experiments"))
+            cancel = true;
+        else if (s.ReduceBackgroundActivity && (url.Contains("/science") ||
+            url.Contains("/outbound-promotions") || url.Contains("/metrics")))
+            cancel = true;
+        else if (s.BlockMarketing && (url.Contains("/quests/") || url.Contains("/promotions") ||
+            url.Contains("/referrals/") || url.Contains("/collectibles-marketing")))
+            cancel = true;
+        else if (s.BlockDetectableGames && (url.Contains("/games/detectable") ||
+            url.Contains("/non-games/detectable")))
+            cancel = true;
+        else if (s.BlockExternalImages && (url.Contains("images-ext-1.discordapp.net") ||
+            url.Contains("images-ext-2.discordapp.net")))
+            cancel = true;
+        else if (s.BlockStatusPolling && (url.Contains("status.discord.com") ||
+            url.Contains("/scheduled-maintenance")))
+            cancel = true;
+        else if (s.BlockContentInventory && url.Contains("/content-inventory/"))
+            cancel = true;
+        else if (s.BlockVendorChunks && url.Contains("/assets/vendors~"))
+            cancel = true;
+        else if (s.BlockDiscordStore && url.Contains("/store/"))
+            cancel = true;
+        else if (s.BlockUserSurveys && (url.Contains("/survey") || url.Contains("/premium-survey")))
+            cancel = true;
+        else if (s.BlockStickerPacks && url.Contains("/sticker-packs"))
+            cancel = true;
+        else if (s.BlockSpotifyAndMetadata && (
+            url.Contains("api.spotify.com") ||
+            url.Contains("games.json") ||
+            url.Contains("non-games.json") ||
+            url.Contains("/billing/user-offer") ||
+            url.Contains("storefront-config") ||
+            url.Contains("applications/public") ||
+            url.Contains("collectibles-marketing") ||
+            url.Contains("exclusions") ||
+            url.Contains("checkout-recovery") ||
+            url.Contains("subscriptions?include_inactive") ||
+            url.Contains("eligibility") ||
+            url.Contains("decision?placement=") ||
+            url.Contains("get-decisions?placement=") ||
+            url.Contains("tokens?application_ids=") ||
+            url.Contains("games?game_ids=")
+        ))
+            cancel = true;
+
+        if (cancel)
+        {
+            e.Response = Browser.CoreWebView2.Environment.CreateWebResourceResponse(
+                null, 403, "Forbidden", "Blocked by Cordex settings");
+        }
     }
 
     // ── Startup ──────────────────────────────────────────────────────────────
@@ -397,10 +525,9 @@ public partial class MainWindow : Window
         _keys.FocusWindow  += ShowApp;
     }
 
-    private void OnBrowserLoadingStateChanged(object? sender,
-        LoadingStateChangedEventArgs e)
+    private void OnBrowserNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
-        if (!e.IsLoading)
+        if (e.IsSuccess)
         {
             if (!_discordLoaded)
             {
@@ -417,18 +544,18 @@ public partial class MainWindow : Window
                 });
             }
 
-            Dispatcher.Invoke(InjectScreenSharePicker);
-            Dispatcher.Invoke(InjectWebRtcRecoveryScript);
             Dispatcher.Invoke(InjectVoiceStateObserver);
             Dispatcher.Invoke(InjectMicAgcPatch);
             Dispatcher.Invoke(InjectDragDropFix);
+            Dispatcher.Invoke(InjectCustomTitleBar);
         }
     }
 
-    private void OnJavascriptMessageReceived(object? sender,
-        JavascriptMessageReceivedEventArgs e)
+    private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
-        if (e.Message is not string message) return;
+        string message = e.TryGetWebMessageAsString();
+        if (string.IsNullOrEmpty(message)) return;
+
         Dispatcher.Invoke(() =>
         {
             if (message.StartsWith("VoiceState:"))
@@ -436,6 +563,31 @@ public partial class MainWindow : Window
                 var parts = message.Split(':');
                 if (parts.Length >= 4)
                     UpdateVoiceState(parts[1] == "true", parts[2] == "true", parts[3] == "true");
+            }
+            else if (message == "window:close")
+            {
+                if (SettingsManager.Current.CloseToTray) Hide();
+                else ExitApp();
+            }
+            else if (message == "window:maximize")
+            {
+                WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+            }
+            else if (message == "window:minimize")
+            {
+                if (SettingsManager.Current.MinimizeToTray) Hide();
+                else WindowState = WindowState.Minimized;
+            }
+            else if (message == "window:settings")
+            {
+                var win = new SettingsWindow { Owner = this };
+                win.KeybindsSaved   += ReloadKeybinds;
+                win.SettingsChanged += OnSettingsChanged;
+                win.ShowDialog();
+            }
+            else if (message == "window:drag")
+            {
+                try { DragMove(); } catch { }
             }
         });
     }
@@ -589,8 +741,8 @@ public partial class MainWindow : Window
             if (!s) return; // Ignore if loading
             if (s.inVoice !== lastInVoice || s.isMuted !== lastMuted || s.isDeafened !== lastDeaf) {
                 lastInVoice = s.inVoice; lastMuted = s.isMuted; lastDeaf = s.isDeafened;
-                if (window.CefSharp && window.CefSharp.PostMessage)
-                    window.CefSharp.PostMessage('VoiceState:' + s.inVoice + ':' + s.isMuted + ':' + s.isDeafened);
+                if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage)
+                    window.chrome.webview.postMessage('VoiceState:' + s.inVoice + ':' + s.isMuted + ':' + s.isDeafened);
             }
         } catch(e) { /* Ignore errors */ }
     }
@@ -618,470 +770,7 @@ public partial class MainWindow : Window
         ExecuteScript(script);
     }
 
-    private void InjectScreenSharePicker()
-    {
-        const string script = @"
-(function() {
-    if (window.__cordexScreenShareFixed) return;
-    window.__cordexScreenShareFixed = true;
 
-    let _active = false, _stream = null;
-
-    async function showPicker() {
-        return new Promise(async (resolve, reject) => {
-            await window.CefSharp.BindObjectAsync('cordexDesktop');
-            const sourcesJson = await window.cordexDesktop.getSources();
-            const sources = JSON.parse(sourcesJson);
-
-            // Fetch Nitro status
-            let hasNitro = false;
-            try {
-                let wp = window.webpackChunkdiscord_app.push([[Math.random()], {}, (r) => r]);
-                window.webpackChunkdiscord_app.pop();
-                for (const key in wp.c) {
-                    const m = wp.c[key].exports;
-                    if (m && m.default && m.default.getCurrentUser) {
-                        const user = m.default.getCurrentUser();
-                        hasNitro = user && user.premiumType > 0;
-                        break;
-                    }
-                }
-            } catch(e) { /* Ignore */ }
-
-            const resOptions = hasNitro ? 
-                [ {text:'1080p (Standard)', value:1080}, {text:'720p (Low bandwidth)', value:720}, {text:'1440p (High Res)', value:1440} ] :
-                [ {text:'720p (Nitro Required for 1080p+)', value:720} ];
-
-            const fpsOptions = hasNitro ? 
-                [ {text:'60 FPS (Smoother)', value:60}, {text:'30 FPS (Classic)', value:30} ] :
-                [ {text:'30 FPS (Nitro Required for 60fps)', value:30} ];
-
-            const sourceOptions = sources.map(s => ({text: s.name, value: s.id}));
-
-            // Create custom select helper
-            function createCustomSelect(options, container) {
-                const wrapper = document.createElement('div');
-                wrapper.style.cssText = 'position:relative;width:100%;user-select:none;';
-                
-                const btn = document.createElement('div');
-                btn.style.cssText = 'width:100%;padding:12px;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.05);border-radius:6px;font-size:14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;color:#fff;box-sizing:border-box;';
-                
-                const label = document.createElement('span');
-                label.innerText = options[0].text;
-                label.style.overflow = 'hidden';
-                label.style.textOverflow = 'ellipsis';
-                label.style.whiteSpace = 'nowrap';
-                
-                const arrow = document.createElement('span');
-                arrow.innerHTML = '▼';
-                arrow.style.fontSize = '10px';
-                arrow.style.marginLeft = '8px';
-                arrow.style.color = '#b5bac1';
-                
-                btn.appendChild(label);
-                btn.appendChild(arrow);
-                
-                const list = document.createElement('div');
-                list.className = 'cx-sel-list';
-                list.style.cssText = 'position:absolute;top:100%;left:0;width:100%;background:#2b2d31;border:1px solid rgba(255,255,255,0.1);border-radius:6px;margin-top:4px;z-index:100000;max-height:160px;overflow-y:auto;display:none;box-shadow:0 8px 16px rgba(0,0,0,0.5);box-sizing:border-box;';
-                
-                // Add custom scrollbar styling globally
-                if (!document.getElementById('cx-scrollbar-style')) {
-                    const style = document.createElement('style');
-                    style.id = 'cx-scrollbar-style';
-                    style.innerHTML = '.cx-sel-list::-webkit-scrollbar { width: 6px; } .cx-sel-list::-webkit-scrollbar-thumb { background: #1e1f22; border-radius: 4px; }';
-                    document.head.appendChild(style);
-                }
-
-                let value = options[0].value;
-                
-                options.forEach(opt => {
-                    const item = document.createElement('div');
-                    item.style.cssText = 'padding:10px 12px;color:#dbdee1;font-size:14px;cursor:pointer;transition:background 0.1s, color 0.1s;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-                    item.innerText = opt.text;
-                    item.onmouseenter = () => { item.style.background = '#404249'; item.style.color = '#fff'; };
-                    item.onmouseleave = () => { item.style.background = 'transparent'; item.style.color = '#dbdee1'; };
-                    item.onclick = (e) => {
-                        e.stopPropagation();
-                        label.innerText = opt.text;
-                        value = opt.value;
-                        document.querySelectorAll('.cx-sel-list').forEach(l => l.style.display = 'none');
-                    };
-                    list.appendChild(item);
-                });
-                
-                btn.onclick = (e) => {
-                    e.stopPropagation();
-                    const visible = list.style.display === 'block';
-                    document.querySelectorAll('.cx-sel-list').forEach(l => l.style.display = 'none');
-                    list.style.display = visible ? 'none' : 'block';
-                };
-                
-                wrapper.appendChild(btn);
-                wrapper.appendChild(list);
-                container.appendChild(wrapper);
-                
-                return { getValue: () => value };
-            }
-
-            const overlay = document.createElement('div');
-            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:999999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;opacity:0;transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1);';
-            
-            const dialog = document.createElement('div');
-            dialog.style.cssText = 'background:rgba(30,31,34,0.65);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:32px;min-width:440px;box-shadow:0 12px 32px rgba(0,0,0,0.5);transform:scale(0.95) translateY(10px);transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1);position:relative;overflow:visible;';
-            
-            const glow = document.createElement('div');
-            glow.style.cssText = 'position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle at 50% 0%, rgba(88,101,242,0.15) 0%, transparent 50%);pointer-events:none;z-index:0;';
-            dialog.appendChild(glow);
-
-            const content = document.createElement('div');
-            content.style.position = 'relative';
-            content.style.zIndex = '1';
-            
-            content.innerHTML = `
-                <h2 style='margin:0 0 8px 0;font-size:24px;font-weight:700;color:#f2f3f5;'>Stream Settings</h2>
-                <p style='color:#b5bac1;font-size:14px;margin:0 0 24px 0;line-height:1.5;'>
-                    Choose an application or screen to stream.
-                </p>
-
-                <div style='margin-bottom: 20px;'>
-                    <label style='display:block;color:#b5bac1;font-size:12px;text-transform:uppercase;font-weight:700;margin-bottom:8px;'>Select Source</label>
-                    <div id='cx-src-container'></div>
-                </div>
-
-                <div style='margin-bottom: 20px; display:flex; gap: 12px;'>
-                    <div style='flex:1'>
-                        <label style='display:block;color:#b5bac1;font-size:12px;text-transform:uppercase;font-weight:700;margin-bottom:8px;'>Stream Quality</label>
-                        <div id='cx-res-container'></div>
-                    </div>
-                    <div style='flex:1'>
-                        <label style='display:block;color:#b5bac1;font-size:12px;text-transform:uppercase;font-weight:700;margin-bottom:8px;'>Frame Rate</label>
-                        <div id='cx-fps-container'></div>
-                    </div>
-                </div>
-
-                <div style='margin-bottom: 28px; display:flex; align-items: center;'>
-                    <input type='checkbox' id='cx-audio' checked style='width: 18px; height: 18px; margin-right: 10px; cursor: pointer; accent-color: #5865F2;'>
-                    <label for='cx-audio' style='color:#fff;font-size:14px;font-weight:600;cursor:pointer;'>Share System/Game Audio</label>
-                </div>
-
-                <div style='display:flex;gap:12px;'>
-                    <button id='cx-cancel' style='flex:1;padding:14px;background:transparent;color:#f2f3f5;border:1px solid rgba(255,255,255,0.1);border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s ease;'>Cancel</button>
-                    <button id='cx-start' style='flex:2;padding:14px;background:#5865F2;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s ease;box-shadow: 0 4px 12px rgba(88,101,242,0.4);'>Share Screen</button>
-                </div>
-            `;
-            
-            dialog.appendChild(content);
-            overlay.appendChild(dialog);
-            document.body.appendChild(overlay);
-
-            // Initialize custom drop downs
-            const srcCtrl = createCustomSelect(sourceOptions, document.getElementById('cx-src-container'));
-            const resCtrl = createCustomSelect(resOptions, document.getElementById('cx-res-container'));
-            const fpsCtrl = createCustomSelect(fpsOptions, document.getElementById('cx-fps-container'));
-
-            // Close dropdowns if clicking outside
-            overlay.addEventListener('click', (e) => {
-                if (!e.target.closest('.cx-sel-list') && !e.target.closest('div[style*=""cursor:pointer""]')) {
-                    document.querySelectorAll('.cx-sel-list').forEach(l => l.style.display = 'none');
-                }
-            });
-
-            const cancelBtn = document.getElementById('cx-cancel');
-            const startBtn = document.getElementById('cx-start');
-            
-            cancelBtn.onmouseenter = () => { cancelBtn.style.background = 'rgba(255,255,255,0.05)'; };
-            cancelBtn.onmouseleave = () => { cancelBtn.style.background = 'transparent'; };
-            startBtn.onmouseenter = () => { startBtn.style.filter = 'brightness(1.15)'; startBtn.style.transform = 'translateY(-1px)'; };
-            startBtn.onmouseleave = () => { startBtn.style.filter = 'none'; startBtn.style.transform = 'none'; };
-            startBtn.onmousedown = () => { startBtn.style.transform = 'translateY(1px)'; };
-            startBtn.onmouseup = () => { startBtn.style.transform = 'translateY(-1px)'; };
-
-            requestAnimationFrame(() => {
-                overlay.style.opacity = '1';
-                dialog.style.transform = 'scale(1) translateY(0)';
-            });
-
-            function closePicker() {
-                overlay.style.opacity = '0';
-                dialog.style.transform = 'scale(0.95) translateY(10px)';
-                setTimeout(() => { if(document.body.contains(overlay)) document.body.removeChild(overlay); }, 300);
-            }
-
-            cancelBtn.onclick = () => { closePicker(); reject(new DOMException('User cancelled', 'NotAllowedError')); };
-            startBtn.onclick = () => {
-                const sourceId = srcCtrl.getValue();
-                const res = parseInt(resCtrl.getValue(), 10);
-                const fps = parseInt(fpsCtrl.getValue(), 10);
-                const audio = document.getElementById('cx-audio').checked;
-                closePicker();
-                resolve({ sourceId, res, fps, audio });
-            };
-        });
-    }
-
-    navigator.mediaDevices.getDisplayMedia = async function(constraints) {
-        if (_active && _stream) {
-            const live = _stream.getTracks().some(t => t.readyState === 'live');
-            _stream.getTracks().forEach(t => t.stop());
-            _stream = null; _active = false; window.__cordexIsScreenSharing = false;
-            if (live) await new Promise(r => setTimeout(r, 300));
-        }
-        try {
-            const config = await showPicker();
-            let w = 1920, h = 1080;
-            if (config.res === 720) { w = 1280; h = 720; }
-            if (config.res === 1440) { w = 2560; h = 1440; }
-
-            // Route our custom source via getUserMedia directly using desktop capture flags!
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    mandatory: {
-                        chromeMediaSource: 'desktop',
-                        chromeMediaSourceId: config.sourceId,
-                        minWidth: w,
-                        maxWidth: w * 2,
-                        minHeight: h,
-                        maxHeight: h * 2,
-                        minFrameRate: config.fps,
-                        maxFrameRate: Math.max(60, config.fps)
-                    }
-                },
-                audio: config.audio ? {
-                    mandatory: {
-                        chromeMediaSource: 'desktop'
-                    }
-                } : false
-            });
-            
-            _stream = stream; _active = true; window.__cordexIsScreenSharing = true;
-            stream.getTracks().forEach(t => {
-                t.addEventListener('ended', () => { _active = false; _stream = null; window.__cordexIsScreenSharing = false; });
-                t.addEventListener('mute',  () => { navigator.mediaDevices?.dispatchEvent(new Event('devicechange')); });
-            });
-            return stream;
-        } catch(err) {
-            _active = false; _stream = null;
-            throw err;
-        }
-    };
-})();
-";
-        ExecuteScript(script);
-    }
-
-    private void InjectWebRtcRecoveryScript()
-    {
-        const string script = @"
-(function() {
-    if (window.__cordexWebRtcRecovery) return;
-    window.__cordexWebRtcRecovery = true;
-
-    var _pending = false, _retries = 0, MAX_RETRIES = 3;
-    var ICE_TIMEOUT  = 8000;   // 8 s — ICE checking phase (increased from 6s)
-    var DTLS_TIMEOUT = 15000;  // 15 s — DTLS handshake after ICE resolves (increased from 10s)
-    var DISC_TIMEOUT = 5000;   // 5 s — disconnected-state grace period
-
-    /* ═══════════════════════════════════════════════════════════
-       Layer 0 — Pre-generate DTLS certificate
-       Eliminates an on-the-fly ECDSA key-gen that can stall
-       the DTLS handshake when the CPU is under load.
-       ═══════════════════════════════════════════════════════════ */
-    var _pregenCert = null;
-    var _certReady = false;
-    try {
-        var _OrigPC = window.RTCPeerConnection;
-        if (_OrigPC && _OrigPC.generateCertificate) {
-            _OrigPC.generateCertificate({ name: 'ECDSA', namedCurve: 'P-256' })
-                .then(function(c) { 
-                    _pregenCert = c; 
-                    _certReady = true;
-                })
-                .catch(function(e) { /* Ignore */ });
-        }
-    } catch(e) {
-        /* Certificate pre-generation not supported */
-    }
-
-    /* ═══════════════════════════════════════════════════════════
-       Reconnect / recovery logic
-       ═══════════════════════════════════════════════════════════ */
-    function reconnect(reason) {
-        if (_pending || window.__cordexIsScreenSharing) return;
-        _pending = true; _retries++;
-        
-        if (_retries > MAX_RETRIES) {
-            setTimeout(function() { location.reload(); }, 300);
-            return;
-        }
-        
-        var path = location.pathname;
-        
-        // First, try ICE restart if we have access to the connection
-        var didIceRestart = false;
-        try {
-            // Try to find Discord's RTCPeerConnection instance and force ICE restart
-            if (window.__cordexLastPC) {
-                window.__cordexLastPC.restartIce();
-                didIceRestart = true;
-                
-                // Give ICE restart 3 seconds to work before full reconnect
-                setTimeout(function() {
-                    if (_pending) {
-                        doFullReconnect(path);
-                    }
-                }, 3000);
-                return;
-            }
-        } catch(e) {
-            /* ICE restart not available */
-        }
-        
-        // If ICE restart not available, do full reconnect immediately
-        if (!didIceRestart) {
-            doFullReconnect(path);
-        }
-    }
-    
-    function doFullReconnect(path) {
-        setTimeout(function() {
-            var btn = document.querySelector('[aria-label=""Reconnect""]') ||
-                      document.querySelector('[aria-label=""Try Again""]');
-            if (btn) { 
-                btn.click(); 
-                setTimeout(function(){ _pending=false; }, 4000); 
-                return; 
-            }
-            
-            var dc = document.querySelector('[aria-label=""Disconnect""]');
-            if (dc) {
-                dc.click();
-                setTimeout(function() {
-                    try { history.pushState({},'',path); dispatchEvent(new PopStateEvent('popstate',{state:{}})); } catch(e){}
-                    setTimeout(function() {
-                        var jn = document.querySelector('[aria-label=""Join Voice Channel""]') ||
-                                 document.querySelector('[class*=""joinButton""]');
-                        if (jn) {
-                            jn.click();
-                        }
-                        setTimeout(function(){ _pending=false; }, 4000);
-                    }, 1200);
-                }, 1000);
-                return;
-            }
-            
-            _pending = false;
-            setTimeout(function() { location.reload(); }, 300);
-        }, 400);
-    }
-
-    /* ═══════════════════════════════════════════════════════════
-       Layer 1 — RTCPeerConnection patch
-       Monitors native ICE + DTLS states with separate timers.
-       ═══════════════════════════════════════════════════════════ */
-    var _Orig = window.RTCPeerConnection;
-    if (!_Orig) return;
-
-    window.RTCPeerConnection = function(cfg, con) {
-        /* Inject pre-generated DTLS cert to speed up handshake */
-        if (_certReady && _pregenCert) {
-            cfg = Object.assign({}, cfg || {});
-            if (!cfg.certificates || cfg.certificates.length === 0) {
-                cfg.certificates = [_pregenCert];
-            }
-        } else if (!_certReady) {
-            /* DTLS cert not ready yet */
-        }
-
-        var pc = new _Orig(cfg, con);
-        var _iceT = null, _dtlsT = null, _discT = null;
-        var _iceOk = false;
-        
-        // Store reference for ICE restart capability
-        window.__cordexLastPC = pc;
-
-        function clr() {
-            if (_iceT)  { clearTimeout(_iceT);  _iceT  = null; }
-            if (_dtlsT) { clearTimeout(_dtlsT); _dtlsT = null; }
-            if (_discT) { clearTimeout(_discT); _discT = null; }
-        }
-
-        function startIce(label) {
-            if (_iceT) clearTimeout(_iceT);
-            _iceOk = false;
-            _iceT = setTimeout(function() {
-                _iceT = null;
-                var s = pc.iceConnectionState;
-                if (s==='checking' || s==='new')
-                    reconnect('ICE stuck '+ICE_TIMEOUT+'ms ('+label+', ice='+s+')');
-            }, ICE_TIMEOUT);
-        }
-
-        function startDtls(label) {
-            if (_dtlsT) clearTimeout(_dtlsT);
-            _dtlsT = setTimeout(function() {
-                _dtlsT = null;
-                if (pc.connectionState==='connecting')
-                    reconnect('DTLS stuck '+DTLS_TIMEOUT+'ms ('+label+')');
-            }, DTLS_TIMEOUT);
-        }
-
-        function startDisc(label) {
-            if (_discT) clearTimeout(_discT);
-            _discT = setTimeout(function() {
-                _discT = null;
-                var s = pc.iceConnectionState;
-                var c = pc.connectionState;
-                if (s==='disconnected' || c==='disconnected')
-                    reconnect('Disconnected '+DISC_TIMEOUT+'ms ('+label+')');
-            }, DISC_TIMEOUT);
-        }
-
-        pc.addEventListener('iceconnectionstatechange', function() {
-            var s = pc.iceConnectionState;
-            if (s==='checking') {
-                startIce('ice');
-            } else if (s==='connected' || s==='completed') {
-                _iceOk = true;
-                if (_iceT) { clearTimeout(_iceT); _iceT = null; }
-                if (_discT){ clearTimeout(_discT);_discT= null; }
-                if (pc.connectionState==='connecting') startDtls('post-ice');
-            } else if (s==='failed') {
-                clr(); reconnect('ice=failed');
-            } else if (s==='disconnected') {
-                if (_iceT) { clearTimeout(_iceT); _iceT = null; }
-                startDisc('ice-disc');
-            } else if (s==='closed') {
-                clr();
-            }
-        });
-
-        pc.addEventListener('connectionstatechange', function() {
-            var s = pc.connectionState;
-            if (s==='connected') {
-                clr(); _retries = 0; _iceOk = true;
-            } else if (s==='connecting' && _iceOk) {
-                startDtls('conn-renego');
-            } else if (s==='failed') {
-                clr(); reconnect('conn=failed');
-            } else if (s==='disconnected') {
-                startDisc('conn-disc');
-            } else if (s==='closed') {
-                clr();
-            }
-        });
-
-        return pc;
-    };
-    window.RTCPeerConnection.prototype = _Orig.prototype;
-    Object.getOwnPropertyNames(_Orig).forEach(function(k) {
-        if (k==='prototype'||k==='length'||k==='name') return;
-        try { window.RTCPeerConnection[k] = _Orig[k]; } catch(e){}
-    });
-})();
-";
-        ExecuteScript(script);
-    }
 
     private void InjectDragDropFix()
     {
@@ -1120,15 +809,170 @@ public partial class MainWindow : Window
 })();");
     }
 
+    private void InjectCustomTitleBar()
+    {
+        string script = @"
+(function() {
+    if (document.getElementById('cordex-titlebar')) return;
+
+    // Create style tag
+    const style = document.createElement('style');
+    style.id = 'cordex-titlebar-style';
+    style.textContent = `
+        #cordex-titlebar {
+            position: fixed;
+            top: 3px;
+            left: 7px;
+            z-index: 999999;
+            display: flex;
+            align-items: center;
+            pointer-events: none;
+            background: transparent;
+            box-sizing: border-box;
+        }
+        .cordex-button-group {
+            display: flex;
+            align-items: center;
+            pointer-events: auto;
+            background: transparent;
+            backdrop-filter: none;
+            padding: 4px;
+            border-radius: 5px;
+            border: none;
+            box-shadow: none;
+            margin-top: 0;
+        }
+        .cordex-btn {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: none;
+            margin-right: 8px;
+            cursor: pointer;
+            padding: 0;
+            transition: transform 0.1s ease, filter 0.1s ease;
+        }
+        .cordex-btn:hover {
+            transform: scale(1.1);
+            filter: brightness(1.2);
+        }
+        .cordex-close {
+            background: #FF5F57;
+        }
+        .cordex-maximize {
+            background: #28C840;
+        }
+        .cordex-minimize {
+            background: #FEBC2E;
+        }
+        .cordex-separator {
+            width: 1px;
+            height: 14px;
+            background: rgba(255, 255, 255, 0.15);
+            margin: 0 10px 0 2px;
+        }
+        .cordex-settings {
+            background: transparent;
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #96989D;
+            margin-right: 0;
+        }
+        .cordex-settings svg {
+            width: 16px;
+            height: 16px;
+        }
+        .cordex-settings:hover {
+            color: #FFFFFF;
+            background: rgba(255, 255, 255, 0.08);
+        }
+        /* Custom layout alignments to embed it directly inside Discord */
+        /* Shift the server lists and sidebar header down to prevent overlaps */
+        nav[class*='guilds-'] {
+            padding-top: 36px !important;
+        }
+        [class*='sidebar-'] {
+            margin-top: 36px !important;
+            border-top-left-radius: 8px !important;
+        }
+        /* Make sure search bar and DM lists clear the overlay */
+        [class*='searchBar-'] {
+            padding-left: 80px !important;
+            transition: padding-left 0.2s ease;
+        }
+        header[class*='header-'], [class*='container-'][class*='themed-'] {
+            padding-left: 85px !important;
+            transition: padding-left 0.2s ease;
+        }
+    `;
+    document.head.appendChild(style);
+
+    // Create titlebar container
+    const titlebar = document.createElement('div');
+    titlebar.id = 'cordex-titlebar';
+    titlebar.innerHTML = `
+        <div class='cordex-button-group'>
+            <button class='cordex-btn cordex-close' title='Close to tray'></button>
+            <button class='cordex-btn cordex-maximize' title='Maximize'></button>
+            <button class='cordex-btn cordex-minimize' title='Minimize'></button>
+            <div class='cordex-separator'></div>
+            <button class='cordex-btn cordex-settings' title='Cordex Settings'>
+                <svg viewBox='0 0 24 24'><path fill='currentColor' d='M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z'/></svg>
+            </button>
+        </div>
+    `;
+    document.body.appendChild(titlebar);
+
+    // Wire events
+    titlebar.querySelector('.cordex-close').addEventListener('click', () => {
+        window.chrome.webview.postMessage('window:close');
+    });
+    titlebar.querySelector('.cordex-maximize').addEventListener('click', () => {
+        window.chrome.webview.postMessage('window:maximize');
+    });
+    titlebar.querySelector('.cordex-minimize').addEventListener('click', () => {
+        window.chrome.webview.postMessage('window:minimize');
+    });
+    titlebar.querySelector('.cordex-settings').addEventListener('click', () => {
+        window.chrome.webview.postMessage('window:settings');
+    });
+
+    // Drag helper mapping
+    document.addEventListener('mousedown', (e) => {
+        const header = e.target.closest('[class*=\'title-\'], [class*=\'header-\'], #cordex-titlebar');
+        if (header) {
+            const interactive = e.target.closest('button, input, a, [role=\'button\'], [class*=\'clickable-\'], [class*=\'iconWrapper-\']');
+            if (!interactive) {
+                window.chrome.webview.postMessage('window:drag');
+            }
+        }
+    });
+})();
+";
+        ExecuteScript(script);
+    }
+
     private void ExecuteScript(string script)
-        => Browser.GetMainFrame()?.ExecuteJavaScriptAsync(script);
+    {
+        if (Browser.CoreWebView2 != null)
+        {
+            Dispatcher.Invoke(async () =>
+            {
+                try { await Browser.CoreWebView2.ExecuteScriptAsync(script); } catch { }
+            });
+        }
+    }
 
     // ── DevTools (F9) ────────────────────────────────────────────────────────
     private void OnWindowPreviewKeyDown(object sender,
         System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == System.Windows.Input.Key.F9)
-        { Browser.ShowDevTools(); e.Handled = true; }
+        { Browser.CoreWebView2?.OpenDevToolsWindow(); e.Handled = true; }
     }
 
     // ── Title Bar Buttons ────────────────────────────────────────────────────
@@ -1193,7 +1037,6 @@ public partial class MainWindow : Window
         _bigIcon?.Dispose();
         _smallIcon?.Dispose();
         Browser.Dispose();
-        Cef.Shutdown();
         System.Windows.Application.Current.Shutdown();
     }
 
@@ -1202,257 +1045,5 @@ public partial class MainWindow : Window
         if (!_isExiting && SettingsManager.Current.CloseToTray)
         { e.Cancel = true; Hide(); }
         base.OnClosing(e);
-    }
-}
-
-// ── DiscordRequestHandler ────────────────────────────────────────────────────
-public class DiscordRequestHandler : CefSharp.Handler.RequestHandler
-{
-    protected override bool OnCertificateError(
-        IWebBrowser b, IBrowser browser, CefErrorCode errorCode,
-        string requestUrl, ISslInfo sslInfo, IRequestCallback callback)
-    { callback.Continue(true); return true; }
-
-    protected override void OnRenderProcessTerminated(
-        IWebBrowser browserControl, IBrowser browser, CefTerminationStatus status)
-    {
-        if (status is CefTerminationStatus.AbnormalTermination
-                    or CefTerminationStatus.ProcessCrashed
-                    or CefTerminationStatus.ProcessWasKilled)
-            browser.Reload();
-    }
-
-    protected override IResourceRequestHandler GetResourceRequestHandler(
-        IWebBrowser cwb, IBrowser browser, IFrame frame, IRequest request,
-        bool isNavigation, bool isDownload, string requestInitiator,
-        ref bool disableDefaultHandling)
-        => new DiscordResourceRequestHandler();
-}
-
-// ── DiscordResourceRequestHandler ───────────────────────────────────────────
-public class DiscordResourceRequestHandler : CefSharp.Handler.ResourceRequestHandler
-{
-    // These CDN hosts must NEVER be blocked regardless of any user setting.
-    // Discord's image lightbox (onZoom) renders <img> tags that fetch directly
-    // from these hosts — blocking them produces the black overlay with no image.
-    private static bool IsCdnUrl(string url) =>
-        url.Contains("cdn.discordapp.com")          ||
-        url.Contains("media.discordapp.net")        ||
-        url.Contains("discordapp.com/attachments")  ||
-        url.Contains("discord.com/attachments")     ||
-        url.Contains("images-ext-1.discordapp.net") ||
-        url.Contains("images-ext-2.discordapp.net");
-
-    // Activity/game hosts must never be blocked for Watch Together to work.
-    private static bool IsActivityUrl(string url) =>
-        url.Contains("discord.com/activities")    ||
-        url.Contains("discordapp.com/activities") ||
-        url.Contains("youtube.com")               ||
-        url.Contains("ytimg.com")                 ||
-        url.Contains("googlevideo.com")           ||
-        url.Contains("googleapis.com");
-
-    protected override CefReturnValue OnBeforeResourceLoad(
-        IWebBrowser cwb, IBrowser browser, IFrame frame,
-        IRequest request, IRequestCallback callback)
-    {
-        var    s   = SettingsManager.Current;
-        string url = request.Url.ToLowerInvariant();
-
-        // ── WHITELIST: these hosts are never blocked by any setting ───────────
-        if (IsCdnUrl(url) || IsActivityUrl(url))
-            return CefReturnValue.Continue;
-
-        // ── Sub-frames are never blocked (YouTube activity iframe) ────────────
-        if (!frame.IsMain)
-            return CefReturnValue.Continue;
-
-        // ── Block rules (main frame only below this point) ────────────────────
-        if (s.BlockFingerprinting && (url.Contains("api.js") || url.Contains("cdn-cgi")))
-            return CefReturnValue.Cancel;
-        if (s.BlockTelemetry && (url.Contains("/science") || url.Contains("/tracing")))
-            return CefReturnValue.Cancel;
-        if (s.BlockSentry && url.Contains("sentry"))
-            return CefReturnValue.Cancel;
-        if (s.BlockTypingIndicator && url.Contains("/typing"))
-            return CefReturnValue.Cancel;
-        if (s.BlockAnimatedAssets && (url.EndsWith(".gif") || url.Contains("/a_")))
-            return CefReturnValue.Cancel;
-        if (s.BlockCrashReports && (url.Contains("errors.discord.com") || url.Contains("/report-")))
-            return CefReturnValue.Cancel;
-        if (s.BlockExperiments && url.Contains("/experiments"))
-            return CefReturnValue.Cancel;
-        if (s.ReduceBackgroundActivity && (url.Contains("/science") ||
-            url.Contains("/outbound-promotions") || url.Contains("/metrics")))
-            return CefReturnValue.Cancel;
-        if (s.BlockMarketing && (url.Contains("/quests/") || url.Contains("/promotions") ||
-            url.Contains("/referrals/") || url.Contains("/collectibles-marketing")))
-            return CefReturnValue.Cancel;
-        if (s.BlockDetectableGames && (url.Contains("/games/detectable") ||
-            url.Contains("/non-games/detectable")))
-            return CefReturnValue.Cancel;
-        if (s.BlockExternalImages && (url.Contains("images-ext-1.discordapp.net") ||
-            url.Contains("images-ext-2.discordapp.net")))
-            return CefReturnValue.Cancel;
-        if (s.BlockStatusPolling && (url.Contains("status.discord.com") ||
-            url.Contains("/scheduled-maintenance")))
-            return CefReturnValue.Cancel;
-        if (s.BlockContentInventory && url.Contains("/content-inventory/"))
-            return CefReturnValue.Cancel;
-        if (s.BlockVendorChunks && url.Contains("/assets/vendors~"))
-            return CefReturnValue.Cancel;
-        if (s.BlockDiscordStore && url.Contains("/store/"))
-            return CefReturnValue.Cancel;
-        if (s.BlockUserSurveys && (url.Contains("/survey") || url.Contains("/premium-survey")))
-            return CefReturnValue.Cancel;
-        if (s.BlockStickerPacks && url.Contains("/sticker-packs"))
-            return CefReturnValue.Cancel;
-
-        return CefReturnValue.Continue;
-    }
-}
-
-// ── NoContextMenuHandler ─────────────────────────────────────────────────────
-public class NoContextMenuHandler : CefSharp.Handler.ContextMenuHandler
-{
-    protected override void OnBeforeContextMenu(
-        IWebBrowser b, IBrowser browser, IFrame frame,
-        IContextMenuParams p, IMenuModel model) => model.Clear();
-}
-
-// ── MediaPermissionHandler ───────────────────────────────────────────────────
-public class MediaPermissionHandler : CefSharp.Handler.PermissionHandler
-{
-    protected override bool OnRequestMediaAccessPermission(
-        IWebBrowser cwb, IBrowser browser, IFrame frame,
-        string requestingOrigin, MediaAccessPermissionType requestedPermissions,
-        IMediaAccessCallback callback)
-    { using (callback) { callback.Continue(requestedPermissions); } return true; }
-
-    protected override bool OnShowPermissionPrompt(
-        IWebBrowser cwb, IBrowser browser, ulong promptId,
-        string requestingOrigin, CefSharp.PermissionRequestType requestedPermissions,
-        IPermissionPromptCallback callback)
-    { using (callback) { callback.Continue(PermissionRequestResult.Accept); } return true; }
-}
-
-// ── DiscordLifeSpanHandler ───────────────────────────────────────────────────
-public class DiscordLifeSpanHandler : CefSharp.Handler.LifeSpanHandler
-{
-    protected override bool OnBeforePopup(
-        IWebBrowser cwb, IBrowser browser, IFrame frame,
-        string targetUrl, string targetFrameName,
-        WindowOpenDisposition targetDisposition, bool userGesture,
-        IPopupFeatures popupFeatures, IWindowInfo windowInfo,
-        IBrowserSettings browserSettings, ref bool noJavascriptAccess,
-        out IWebBrowser? newBrowser)
-    {
-        newBrowser = null;
-
-        if (string.IsNullOrEmpty(targetUrl)     ||
-            targetUrl.StartsWith("chrome://")   ||
-            targetUrl.StartsWith("devtools://") ||
-            targetUrl.StartsWith("about:"))
-            return false;
-
-        string lower = targetUrl.ToLowerInvariant();
-
-        bool isInternal =
-            targetUrl.StartsWith("blob:")              ||
-            lower.Contains("cdn.discordapp.com")       ||
-            lower.Contains("media.discordapp.net")     ||
-            lower.Contains("discordapp.com/attachments")||
-            lower.Contains("discord.com/attachments")  ||
-            lower.Contains("discord.com/channels")     ||
-            lower.Contains("discord.com/invite")       ||
-            lower.Contains("discordapp.com")           ||
-            lower.Contains("discord.com");
-
-        if (isInternal)
-        {
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-            {
-                var popupBrowser = new ChromiumWebBrowser(targetUrl)
-                {
-                    MenuHandler       = new NoContextMenuHandler(),
-                    PermissionHandler = new MediaPermissionHandler(),
-                    DownloadHandler   = new DiscordDownloadHandler()
-                };
-                var win = new System.Windows.Window
-                {
-                    Title                 = "Cordex",
-                    Width                 = 1000,
-                    Height                = 700,
-                    WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen,
-                    Content               = popupBrowser
-                };
-                win.Show();
-            });
-            return true;
-        }
-
-        if (targetUrl.StartsWith("http://") || targetUrl.StartsWith("https://"))
-        {
-            try
-            {
-                System.Diagnostics.Process.Start(
-                    new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName        = targetUrl,
-                        UseShellExecute = true
-                    });
-            }
-            catch { }
-        }
-
-        return true;
-    }
-}
-
-// ── DiscordDownloadHandler ───────────────────────────────────────────────────
-public class DiscordDownloadHandler : CefSharp.Handler.DownloadHandler
-{
-    protected override void OnBeforeDownload(
-        IWebBrowser cwb, IBrowser browser,
-        DownloadItem downloadItem, IBeforeDownloadCallback callback)
-    {
-        if (callback.IsDisposed) return;
-
-        System.Windows.Application.Current.Dispatcher.Invoke(() =>
-        {
-            var name = downloadItem.SuggestedFileName ?? "download";
-            var ext  = System.IO.Path.GetExtension(name).TrimStart('.').ToLowerInvariant();
-
-            var dlg = new Microsoft.Win32.SaveFileDialog
-            {
-                FileName = name,
-                Title    = "Save File",
-                Filter   = string.IsNullOrEmpty(ext)
-                    ? "All files (*.*)|*.*"
-                    : $"{ext.ToUpperInvariant()} files (*.{ext})|*.{ext}|All files (*.*)|*.*"
-            };
-
-            using (callback)
-            {
-                if (dlg.ShowDialog() == true)
-                    callback.Continue(dlg.FileName, showDialog: false);
-            }
-        });
-    }
-
-    protected override void OnDownloadUpdated(
-        IWebBrowser cwb, IBrowser browser,
-        DownloadItem downloadItem, IDownloadItemCallback callback) { }
-}
-
-
-// ── DiscordDragHandler ───────────────────────────────────────────────────────
-public class DiscordDragHandler : CefSharp.Handler.DragHandler
-{
-    protected override bool OnDragEnter(
-        IWebBrowser cwb, IBrowser browser, IDragData dragData, DragOperationsMask mask)
-    {
-        // Allow all drag operations within Discord
-        return false;
     }
 }

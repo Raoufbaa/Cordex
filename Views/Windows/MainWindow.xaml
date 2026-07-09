@@ -3,7 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-    xmlns:cef="clr-namespace:CefSharp.Wpf;assembly=CefSharp.Wpf"
+    xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
     Title="Cordex"
     Icon="pack://application:,,,/Assets/app.ico"
     Width="1100"
@@ -82,10 +82,13 @@
 
     <Border x:Name="WindowBorder" BorderBrush="#3A3C40" BorderThickness="1" CornerRadius="8">
         <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="0"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-            <cef:ChromiumWebBrowser x:Name="Browser" Address="about:blank"/>
-
-            <Grid Height="36" VerticalAlignment="Top">
+            <!-- Top Bar Row -->
+            <Grid Grid.Row="0" Height="36" VerticalAlignment="Top">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
@@ -137,6 +140,9 @@
                 <Border Grid.Column="1" Background="Transparent"/>
 
             </Grid>
+
+            <!-- Browser Row -->
+            <wv2:WebView2 Grid.Row="1" x:Name="Browser"/>
 
         </Grid>
     </Border>

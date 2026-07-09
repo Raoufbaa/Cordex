@@ -39,7 +39,7 @@ public class AppSettings
     public bool EnablePerformanceLimits { get; set; } = false;
     public int  MaxCpuCores           { get; set; } = Math.Max(2, Environment.ProcessorCount);
     public int  MaxCpuPercent         { get; set; } = 100; // Maximum CPU usage percentage
-    public int  MaxRamMB              { get; set; } = Math.Max(200, 512); // Minimum 200MB, default 512MB
+    public int  MaxRamMB              { get; set; } = Math.Max(300, 512); // Minimum 300MB, default 512MB
     public bool EnableCpuAffinity     { get; set; } = false;
     public long CpuAffinityMask       { get; set; } = 0x0F; // Default to cores 0-3 (binary 1111)
     public bool LimitGpuUsage         { get; set; } = false;
@@ -79,6 +79,7 @@ public class AppSettings
     public bool BlockDiscordStore     { get; set; } = false;
     public bool BlockUserSurveys      { get; set; } = false;
     public bool BlockStickerPacks     { get; set; } = false;
+    public bool BlockSpotifyAndMetadata { get; set; } = false;
 }
 
 public static class SettingsManager

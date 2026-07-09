@@ -88,8 +88,8 @@ public partial class SettingsWindow : FluentWindow
         SliderCpuCores.Maximum            = Environment.ProcessorCount;
         SliderCpuCores.Value              = Math.Max(2, Math.Min(s.MaxCpuCores, Environment.ProcessorCount));
         TxtCpuCores.Text                  = $"{(int)SliderCpuCores.Value} cores";
-        SliderRamLimit.Minimum            = 200;
-        SliderRamLimit.Value              = Math.Max(200, s.MaxRamMB);
+        SliderRamLimit.Minimum            = 300;
+        SliderRamLimit.Value              = Math.Max(300, s.MaxRamMB);
         TxtRamLimit.Text                  = $"{(int)SliderRamLimit.Value} MB";
         ToggleLimitGpu.IsChecked          = s.LimitGpuUsage;
         ToggleReduceBackground.IsChecked  = s.ReduceBackgroundActivity;
@@ -116,6 +116,7 @@ public partial class SettingsWindow : FluentWindow
         ToggleBlockDiscordStore.IsChecked     = s.BlockDiscordStore;
         ToggleBlockUserSurveys.IsChecked      = s.BlockUserSurveys;
         ToggleBlockStickerPacks.IsChecked     = s.BlockStickerPacks;
+        ToggleBlockSpotifyAndMetadata.IsChecked = s.BlockSpotifyAndMetadata;
 
         // Set version text
         VersionTextBlock.Text = $"Version {VersionManager.GetCurrentVersion()}";
@@ -347,7 +348,7 @@ public partial class SettingsWindow : FluentWindow
         s.EnablePerformanceLimits  = TogglePerformanceLimits.IsChecked == true;
         s.MaxCpuCores              = Math.Max(2, (int)SliderCpuCores.Value);
         s.MaxCpuPercent            = 100;
-        s.MaxRamMB                 = Math.Max(200, (int)SliderRamLimit.Value);
+        s.MaxRamMB                 = Math.Max(300, (int)SliderRamLimit.Value);
         s.LimitGpuUsage            = ToggleLimitGpu.IsChecked == true;
         s.ReduceBackgroundActivity = ToggleReduceBackground.IsChecked == true;
 
@@ -373,6 +374,7 @@ public partial class SettingsWindow : FluentWindow
         s.BlockDiscordStore     = ToggleBlockDiscordStore.IsChecked == true;
         s.BlockUserSurveys      = ToggleBlockUserSurveys.IsChecked == true;
         s.BlockStickerPacks     = ToggleBlockStickerPacks.IsChecked == true;
+        s.BlockSpotifyAndMetadata = ToggleBlockSpotifyAndMetadata.IsChecked == true;
 
         // Handle Start with Windows registry
         SetStartWithWindows(s.StartWithWindows);
