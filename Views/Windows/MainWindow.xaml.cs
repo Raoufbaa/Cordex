@@ -14,7 +14,6 @@ public partial class MainWindow : Window
 {
     private readonly TrayManager    _tray  = new();
     private readonly KeybindManager _keys  = new();
-    private readonly AudioMonitor   _audio = new();
 
     private MuteState   _muteState        = MuteState.Default;
     private bool        _isExiting        = false;
@@ -257,9 +256,6 @@ public partial class MainWindow : Window
             var args = new List<string>
             {
                 "--autoplay-policy=no-user-gesture-required",
-                "--disable-background-timer-throttling",
-                "--disable-backgrounding-occluded-windows",
-                "--disable-renderer-backgrounding",
                 "--disable-features=WebRtcHideLocalIpsWithMdns,InterestFeedContentSuggestions,BlinkGenPropertyTrees,SafeBrowsing",
                 "--enable-features=AudioWorkletThreadRealtimePriority,WebAssemblySimd,WebAssemblyThreads,MediaRouter",
                 "--disable-plugins-discovery",
@@ -281,6 +277,13 @@ public partial class MainWindow : Window
 
             var s = SettingsManager.Current;
 
+            if (!s.ReduceBackgroundActivity)
+            {
+                args.Add("--disable-background-timer-throttling");
+                args.Add("--disable-backgrounding-occluded-windows");
+                args.Add("--disable-renderer-backgrounding");
+            }
+
             if (!s.HardwareAcceleration)
             {
                 args.Add("--disable-gpu");
@@ -292,6 +295,13 @@ public partial class MainWindow : Window
                 args.Add("--enable-gpu-rasterization");
                 args.Add("--enable-accelerated-video-decode");
                 args.Add("--enable-zero-copy");
+            }
+
+            if (s.DisableWebGL)
+            {
+                args.Add("--disable-webgl");
+                args.Add("--disable-webgl2");
+                args.Add("--disable-3d-apis");
             }
 
             if (s.EnablePerformanceLimits)
@@ -322,8 +332,9 @@ public partial class MainWindow : Window
                 "AppleWebKit/537.36 (KHTML, like Gecko) " +
                 "Chrome/126.0.0.0 Safari/537.36";
 
-            Browser.CoreWebView2.Settings.AreDevToolsEnabled = true;
+            Browser.CoreWebView2.Settings.AreDevToolsEnabled = !s.DisableDevTools;
             Browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+            Browser.CoreWebView2.Settings.IsStatusBarEnabled = !s.DisableLinkPreviews;
 
             // Wire up event handlers
             Browser.CoreWebView2.PermissionRequested += OnPermissionRequested;
@@ -638,15 +649,7 @@ public partial class MainWindow : Window
         // Audio monitoring removed for performance
     }
 
-    private void SyncAudio()
-    {
-        if (SettingsManager.Current.ShowVoiceActivity &&
-            SettingsManager.Current.EnableAudioMonitoring &&
-            _muteState == MuteState.Unmuted)
-            _audio.Start();
-        else
-            _audio.Stop();
-    }
+
 
     /// <summary>
     /// Patches navigator.mediaDevices.getUserMedia so that every audio
@@ -1033,8 +1036,10 @@ public partial class MainWindow : Window
 
     private void OnSettingsChanged()
     {
-        _audio.RefreshSettings();
-        if (_isInVoiceChannel) SyncAudio();
+        if (Browser.CoreWebView2 != null)
+        {
+            Browser.CoreWebView2.Settings.IsStatusBarEnabled = !SettingsManager.Current.DisableLinkPreviews;
+        }
     }
 
     // ── Actions ──────────────────────────────────────────────────────────────
@@ -1068,7 +1073,6 @@ public partial class MainWindow : Window
     private void ExitApp()
     {
         _isExiting = true;
-        _audio.Dispose();
         _keys.Unregister();
         _tray.Dispose();
         _bigIcon?.Dispose();

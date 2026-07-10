@@ -310,25 +310,22 @@ public static class PerformanceManager
                     }
                 }
 
-                var allProcesses = Process.GetProcesses();
-
-                foreach (var proc in allProcesses)
+                foreach (var id in childIds)
                 {
                     try
                     {
-                        if (proc.Id == mainProcess.Id) continue;
+                        if (id == mainProcess.Id) continue;
                         
                         // If already in cache, skip
                         bool alreadyTracked = false;
                         for (int j = 0; j < _cachedCefProcesses.Count; j++)
                         {
-                            if (_cachedCefProcesses[j].Id == proc.Id) { alreadyTracked = true; break; }
+                            if (_cachedCefProcesses[j].Id == id) { alreadyTracked = true; break; }
                         }
                         if (alreadyTracked) continue;
 
-                        // Only track processes that are part of our application's process tree
-                        if (childIds.Contains(proc.Id) && 
-                            proc.ProcessName.Contains("msedgewebview2", StringComparison.OrdinalIgnoreCase))
+                        var proc = Process.GetProcessById(id);
+                        if (proc.ProcessName.Contains("msedgewebview2", StringComparison.OrdinalIgnoreCase))
                         {
                             _cachedCefProcesses.Add(proc);
                         }

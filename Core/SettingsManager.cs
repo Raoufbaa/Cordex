@@ -44,21 +44,17 @@ public class AppSettings
     public long CpuAffinityMask       { get; set; } = 0x0F; // Default to cores 0-3 (binary 1111)
     public bool LimitGpuUsage         { get; set; } = false;
     public bool ReduceBackgroundActivity { get; set; } = false;
+    public bool DisableWebGL          { get; set; } = false;
+    public bool DisableDevTools       { get; set; } = false;
+    public bool DisableLinkPreviews   { get; set; } = true;
     
     // Voice & Audio
     public bool AutomaticallyMute        { get; set; } = false;
-    public bool ShowVoiceActivity        { get; set; } = true;
-    public bool EnableAudioMonitoring    { get; set; } = false;
-    public int  VoiceActivityThreshold   { get; set; } = 50;
 
     // Microphone AGC / Ducking Control
     public bool DisableMicAgc            { get; set; } = false; // Disable WebRTC autoGainControl
     public bool DisableWinDucking        { get; set; } = false; // Disable Windows comms ducking
     public bool DisableAudioEnhancements { get; set; } = false; // Disable SysFX (driver AGC, noise suppression)
-    
-    // Notifications
-    public bool ShowNotifications     { get; set; } = true;
-    public bool NotificationSounds    { get; set; } = true;
     
     // API Blocking
     public bool BlockFingerprinting   { get; set; } = false;

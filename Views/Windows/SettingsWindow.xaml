@@ -158,33 +158,6 @@
                         </Button.Template>
                     </Button>
 
-                    <Button x:Name="NavNotifications"
-                            Content="Notifications"
-                            Tag="Notifications"
-                            HorizontalContentAlignment="Left"
-                            Padding="10,8"
-                            Background="Transparent"
-                            Foreground="#96989D"
-                            BorderThickness="0"
-                            Cursor="Hand"
-                            FontSize="13"
-                            Margin="0,1"
-                            Click="NavButton_Click">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="4">
-                                    <ContentPresenter Margin="10,6" HorizontalAlignment="Left"
-                                                      VerticalAlignment="Center"/>
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Bg" Property="Background" Value="#2E2F34"/>
-                                        <Setter Property="Foreground" Value="White"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
-                    </Button>
 
                     <Button x:Name="NavPerformance"
                             Content="Performance"
@@ -681,43 +654,7 @@
                                    FontSize="12" Foreground="#80848E"
                                    TextWrapping="Wrap" Margin="0,0,0,20"/>
 
-                        <!-- Show Voice Activity -->
-                        <Border Background="#2B2D31" CornerRadius="8" Padding="16,14" Margin="0,0,0,8">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock Text="Show Voice Activity"
-                                               Foreground="White" FontSize="14"/>
-                                    <TextBlock Text="Display talking indicator in system tray"
-                                               Foreground="#80848E" FontSize="11"
-                                               Margin="0,2,0,0"/>
-                                </StackPanel>
-                                <ui:ToggleSwitch x:Name="ToggleShowVoiceActivity" Grid.Column="1"
-                                                 VerticalAlignment="Center" Margin="12,0,0,0"/>
-                            </Grid>
-                        </Border>
 
-                        <!-- Enable Audio Monitoring -->
-                        <Border Background="#2B2D31" CornerRadius="8" Padding="16,14" Margin="0,0,0,8">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock Text="Enable Audio Monitoring"
-                                               Foreground="White" FontSize="14"/>
-                                    <TextBlock Text="Monitor microphone audio levels (uses CPU when unmuted)"
-                                               Foreground="#80848E" FontSize="11"
-                                               Margin="0,2,0,0"/>
-                                </StackPanel>
-                                <ui:ToggleSwitch x:Name="ToggleEnableAudioMonitoring" Grid.Column="1"
-                                                 VerticalAlignment="Center" Margin="12,0,0,0"/>
-                            </Grid>
-                        </Border>
 
                         <!-- Automatically Mute -->
                         <Border Background="#2B2D31" CornerRadius="8" Padding="16,14" Margin="0,0,0,8">
@@ -738,23 +675,7 @@
                             </Grid>
                         </Border>
 
-                        <!-- Voice Activity Threshold -->
-                        <Border Background="#2B2D31" CornerRadius="8" Padding="16,14" Margin="0,0,0,8">
-                            <StackPanel>
-                                <TextBlock Text="Voice Activity Threshold"
-                                           Foreground="White" FontSize="14" Margin="0,0,0,8"/>
-                                <TextBlock Text="Adjust the sensitivity for voice activity detection"
-                                           Foreground="#80848E" FontSize="11" Margin="0,0,0,12"/>
-                                <Slider x:Name="SliderVoiceThreshold"
-                                        Minimum="0" Maximum="100"
-                                        TickFrequency="10"
-                                        IsSnapToTickEnabled="True"
-                                        Foreground="#5865F2"/>
-                                <TextBlock x:Name="TxtVoiceThreshold" Text="50%"
-                                           Foreground="#B5BAC1" FontSize="12"
-                                           HorizontalAlignment="Center" Margin="0,4,0,0"/>
-                            </StackPanel>
-                        </Border>
+
 
                         <!-- ── Mic AGC / Ducking Section ── -->
                         <Rectangle Height="1" Fill="#2B2D31" Margin="0,12,0,12"/>
@@ -827,54 +748,6 @@
 
                     </StackPanel>
 
-                    <!-- ── Notifications Page ── -->
-                    <StackPanel x:Name="PageNotifications" Visibility="Collapsed">
-                        <TextBlock Text="Notifications"
-                                   FontSize="20" FontWeight="SemiBold"
-                                   Foreground="White" Margin="0,0,0,4"/>
-                        <TextBlock Text="Manage notification preferences."
-                                   FontSize="12" Foreground="#80848E"
-                                   TextWrapping="Wrap" Margin="0,0,0,20"/>
-
-                        <!-- Show Notifications -->
-                        <Border Background="#2B2D31" CornerRadius="8" Padding="16,14" Margin="0,0,0,8">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock Text="Enable Notifications"
-                                               Foreground="White" FontSize="14"/>
-                                    <TextBlock Text="Show desktop notifications for messages and events"
-                                               Foreground="#80848E" FontSize="11"
-                                               Margin="0,2,0,0"/>
-                                </StackPanel>
-                                <ui:ToggleSwitch x:Name="ToggleShowNotifications" Grid.Column="1"
-                                                 VerticalAlignment="Center" Margin="12,0,0,0"/>
-                            </Grid>
-                        </Border>
-
-                        <!-- Notification Sounds -->
-                        <Border Background="#2B2D31" CornerRadius="8" Padding="16,14" Margin="0,0,0,8">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock Text="Notification Sounds"
-                                               Foreground="White" FontSize="14"/>
-                                    <TextBlock Text="Play sounds for notifications"
-                                               Foreground="#80848E" FontSize="11"
-                                               Margin="0,2,0,0"/>
-                                </StackPanel>
-                                <ui:ToggleSwitch x:Name="ToggleNotificationSounds" Grid.Column="1"
-                                                 VerticalAlignment="Center" Margin="12,0,0,0"/>
-                            </Grid>
-                        </Border>
-                    </StackPanel>
-
                     <!-- ── Performance Page ── -->
                     <StackPanel x:Name="PagePerformance" Visibility="Collapsed">
                         <TextBlock Text="Performance"
@@ -921,6 +794,64 @@
                                                  VerticalAlignment="Center" Margin="12,0,0,0"/>
                             </Grid>
                         </Border>
+
+                        <!-- Disable WebGL -->
+                        <Border Background="#2B2D31" CornerRadius="8" Padding="16,14" Margin="0,0,0,8">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Disable WebGL &amp; 3D Graphics"
+                                               Foreground="White" FontSize="14"/>
+                                    <TextBlock Text="Disable WebGL and 3D graphics APIs to reduce GPU overhead."
+                                               Foreground="#80848E" FontSize="11"
+                                               TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <ui:ToggleSwitch x:Name="ToggleDisableWebGL" Grid.Column="1"
+                                                 VerticalAlignment="Center" Margin="12,0,0,0"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Disable Developer Tools -->
+                        <Border Background="#2B2D31" CornerRadius="8" Padding="16,14" Margin="0,0,0,8">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Disable Developer Tools"
+                                               Foreground="White" FontSize="14"/>
+                                    <TextBlock Text="Disable F12 Developer Tools to reduce debug overhead and memory usage."
+                                               Foreground="#80848E" FontSize="11"
+                                               TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <ui:ToggleSwitch x:Name="ToggleDisableDevTools" Grid.Column="1"
+                                                 VerticalAlignment="Center" Margin="12,0,0,0"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Disable Link Previews -->
+                        <Border Background="#2B2D31" CornerRadius="8" Padding="16,14" Margin="0,0,0,8">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Disable Link Previews"
+                                               Foreground="White" FontSize="14"/>
+                                    <TextBlock Text="Hide the browser status bar containing link previews and URLs in the bottom-left corner."
+                                               Foreground="#80848E" FontSize="11"
+                                               TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <ui:ToggleSwitch x:Name="ToggleDisableLinkPreviews" Grid.Column="1"
+                                                 VerticalAlignment="Center" Margin="12,0,0,0"/>
+                            </Grid>
+                        </Border>
+
 
                         <!-- Enable Performance Limits -->
                         <Border Background="#2B2D31" CornerRadius="8" Padding="16,14" Margin="0,0,0,8">

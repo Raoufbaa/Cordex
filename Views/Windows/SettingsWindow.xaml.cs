@@ -64,25 +64,20 @@ public partial class SettingsWindow : FluentWindow
         ToggleMinimizeToTray.IsChecked = s.MinimizeToTray;
         ToggleStartMinimized.IsChecked = s.StartMinimized;
 
-        // Load voice & audio
-        ToggleShowVoiceActivity.IsChecked = s.ShowVoiceActivity;
-        ToggleEnableAudioMonitoring.IsChecked = s.EnableAudioMonitoring;
+        // Load voice & audio settings
         ToggleAutoMute.IsChecked          = s.AutomaticallyMute;
-        SliderVoiceThreshold.Value        = s.VoiceActivityThreshold;
-        TxtVoiceThreshold.Text            = $"{s.VoiceActivityThreshold}%";
 
         // Load mic AGC / ducking settings
         ToggleDisableMicAgc.IsChecked             = s.DisableMicAgc;
         ToggleDisableWinDucking.IsChecked         = s.DisableWinDucking;
         ToggleDisableAudioEnhancements.IsChecked  = s.DisableAudioEnhancements;
 
-        // Load notifications
-        ToggleShowNotifications.IsChecked  = s.ShowNotifications;
-        ToggleNotificationSounds.IsChecked = s.NotificationSounds;
-
         // Load performance settings
         ToggleHardwareAccel.IsChecked     = s.HardwareAcceleration;
         ToggleReducedMotion.IsChecked     = s.ReducedMotion;
+        ToggleDisableWebGL.IsChecked      = s.DisableWebGL;
+        ToggleDisableDevTools.IsChecked   = s.DisableDevTools;
+        ToggleDisableLinkPreviews.IsChecked = s.DisableLinkPreviews;
         TogglePerformanceLimits.IsChecked = s.EnablePerformanceLimits;
         SliderCpuCores.Minimum            = 2;
         SliderCpuCores.Maximum            = Environment.ProcessorCount;
@@ -121,9 +116,6 @@ public partial class SettingsWindow : FluentWindow
         // Set version text
         VersionTextBlock.Text = $"Version {VersionManager.GetCurrentVersion()}";
 
-        // Wire up slider events
-        SliderVoiceThreshold.ValueChanged += (_, e) =>
-            TxtVoiceThreshold.Text = $"{(int)e.NewValue}%";
     }
 
 
@@ -137,7 +129,6 @@ public partial class SettingsWindow : FluentWindow
         // Hide all pages
         PageGeneral.Visibility       = Visibility.Collapsed;
         PageVoiceAudio.Visibility    = Visibility.Collapsed;
-        PageNotifications.Visibility = Visibility.Collapsed;
         PagePerformance.Visibility   = Visibility.Collapsed;
         PageKeybinds.Visibility      = Visibility.Collapsed;
         PageAbout.Visibility         = Visibility.Collapsed;
@@ -145,14 +136,12 @@ public partial class SettingsWindow : FluentWindow
         // Reset all nav buttons
         NavGeneral.Background       = WpfBrushes.Transparent;
         NavVoiceAudio.Background    = WpfBrushes.Transparent;
-        NavNotifications.Background = WpfBrushes.Transparent;
         NavPerformance.Background   = WpfBrushes.Transparent;
         NavKeybinds.Background      = WpfBrushes.Transparent;
         NavAbout.Background         = WpfBrushes.Transparent;
 
         NavGeneral.Foreground       = new WpfBrush(WpfColor.FromRgb(0x96, 0x98, 0x9D));
         NavVoiceAudio.Foreground    = new WpfBrush(WpfColor.FromRgb(0x96, 0x98, 0x9D));
-        NavNotifications.Foreground = new WpfBrush(WpfColor.FromRgb(0x96, 0x98, 0x9D));
         NavPerformance.Foreground   = new WpfBrush(WpfColor.FromRgb(0x96, 0x98, 0x9D));
         NavKeybinds.Foreground      = new WpfBrush(WpfColor.FromRgb(0x96, 0x98, 0x9D));
         NavAbout.Foreground         = new WpfBrush(WpfColor.FromRgb(0x96, 0x98, 0x9D));
@@ -169,11 +158,6 @@ public partial class SettingsWindow : FluentWindow
                 PageVoiceAudio.Visibility = Visibility.Visible;
                 NavVoiceAudio.Background  = _activeNav;
                 NavVoiceAudio.Foreground  = WpfBrushes.White;
-                break;
-            case "Notifications":
-                PageNotifications.Visibility = Visibility.Visible;
-                NavNotifications.Background  = _activeNav;
-                NavNotifications.Foreground  = WpfBrushes.White;
                 break;
             case "Performance":
                 PagePerformance.Visibility = Visibility.Visible;
@@ -327,24 +311,20 @@ public partial class SettingsWindow : FluentWindow
         s.MinimizeToTray = ToggleMinimizeToTray.IsChecked == true;
         s.StartMinimized = ToggleStartMinimized.IsChecked == true;
 
-        // Save voice & audio
-        s.ShowVoiceActivity      = ToggleShowVoiceActivity.IsChecked == true;
-        s.EnableAudioMonitoring  = ToggleEnableAudioMonitoring.IsChecked == true;
+        // Save voice settings
         s.AutomaticallyMute      = ToggleAutoMute.IsChecked == true;
-        s.VoiceActivityThreshold = (int)SliderVoiceThreshold.Value;
 
         // Save mic AGC / ducking settings
         s.DisableMicAgc            = ToggleDisableMicAgc.IsChecked == true;
         s.DisableWinDucking        = ToggleDisableWinDucking.IsChecked == true;
         s.DisableAudioEnhancements = ToggleDisableAudioEnhancements.IsChecked == true;
 
-        // Save notifications
-        s.ShowNotifications  = ToggleShowNotifications.IsChecked == true;
-        s.NotificationSounds = ToggleNotificationSounds.IsChecked == true;
-
         // Save performance settings
         s.HardwareAcceleration     = ToggleHardwareAccel.IsChecked == true;
         s.ReducedMotion            = ToggleReducedMotion.IsChecked == true;
+        s.DisableWebGL             = ToggleDisableWebGL.IsChecked == true;
+        s.DisableDevTools          = ToggleDisableDevTools.IsChecked == true;
+        s.DisableLinkPreviews      = ToggleDisableLinkPreviews.IsChecked == true;
         s.EnablePerformanceLimits  = TogglePerformanceLimits.IsChecked == true;
         s.MaxCpuCores              = Math.Max(2, (int)SliderCpuCores.Value);
         s.MaxCpuPercent            = 100;
