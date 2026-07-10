@@ -90,11 +90,15 @@ public static class MicAgcManager
     /// </summary>
     private static void ApplyDuckingPreference(bool disableDucking)
     {
+        IMMDeviceEnumerator? enumerator = null;
+        IMMDevice? device = null;
+        IAudioSessionManager2? mgr = null;
+        IAudioSessionEnumerator? sessionEnum = null;
         try
         {
             // Get the default render endpoint (output device).
-            var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
-            var hr = enumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eCommunications, out var device);
+            enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+            var hr = enumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eCommunications, out device);
             if (hr != 0 || device == null)
             {
                 return;
@@ -103,13 +107,14 @@ public static class MicAgcManager
             // Activate IAudioSessionManager2
             var iid = typeof(IAudioSessionManager2).GUID;
             hr = device.Activate(ref iid, 0, IntPtr.Zero, out var obj);
-            if (hr != 0 || obj is not IAudioSessionManager2 mgr)
+            if (hr != 0 || obj is not IAudioSessionManager2 activeMgr)
             {
                 return;
             }
+            mgr = activeMgr;
 
             // Get session enumerator
-            hr = mgr.GetSessionEnumerator(out var sessionEnum);
+            hr = mgr.GetSessionEnumerator(out sessionEnum);
             if (hr != 0 || sessionEnum == null)
             {
                 return;
@@ -118,12 +123,12 @@ public static class MicAgcManager
             hr = sessionEnum.GetCount(out var count);
             if (hr != 0) return;
 
-            int changed = 0;
             for (int i = 0; i < count; i++)
             {
+                IAudioSessionControl? ctrl = null;
                 try
                 {
-                    hr = sessionEnum.GetSession(i, out var ctrl);
+                    hr = sessionEnum.GetSession(i, out ctrl);
                     if (hr != 0 || ctrl == null) continue;
 
                     if (ctrl is IAudioSessionControl2 ctrl2)
@@ -131,22 +136,30 @@ public static class MicAgcManager
                         // SetDuckingPreference(true) = "I don't want to be ducked"
                         // SetDuckingPreference(false) = restore Windows default ducking
                         ctrl2.SetDuckingPreference(disableDucking);
-                        changed++;
                     }
                 }
                 catch { /* skip inaccessible sessions */ }
+                finally
+                {
+                    if (ctrl != null)
+                    {
+                        Marshal.ReleaseComObject(ctrl);
+                    }
+                }
             }
 
             _duckingDisabled = disableDucking;
-
-            Marshal.ReleaseComObject(sessionEnum);
-            Marshal.ReleaseComObject(mgr);
-            Marshal.ReleaseComObject(device);
-            Marshal.ReleaseComObject(enumerator);
         }
         catch (Exception ex)
         {
             _ = ex; // Suppress warning
+        }
+        finally
+        {
+            if (sessionEnum != null) Marshal.ReleaseComObject(sessionEnum);
+            if (mgr != null) Marshal.ReleaseComObject(mgr);
+            if (device != null) Marshal.ReleaseComObject(device);
+            if (enumerator != null) Marshal.ReleaseComObject(enumerator);
         }
     }
 
@@ -161,12 +174,14 @@ public static class MicAgcManager
     /// </summary>
     private static void ApplySysFxSetting(bool disable)
     {
+        IMMDeviceEnumerator? enumerator = null;
+        IMMDevice? device = null;
+        IPropertyStore? store = null;
         try
         {
-            var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+            enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
 
             // Try eCommunications role first, fall back to eConsole
-            IMMDevice? device = null;
             int hr = enumerator.GetDefaultAudioEndpoint(EDataFlow.eCapture, ERole.eCommunications, out device);
             if (hr != 0 || device == null)
                 hr = enumerator.GetDefaultAudioEndpoint(EDataFlow.eCapture, ERole.eConsole, out device);
@@ -176,7 +191,7 @@ public static class MicAgcManager
             }
 
             // STGM_READWRITE = 2
-            hr = device.OpenPropertyStore(2, out var store);
+            hr = device.OpenPropertyStore(2, out store);
             if (hr != 0 || store == null)
             {
                 // Don't propagate — just silently skip
@@ -201,15 +216,17 @@ public static class MicAgcManager
             {
                 _sysFxDisabled = disable;
             }
-
-            Marshal.ReleaseComObject(store);
-            Marshal.ReleaseComObject(device);
-            Marshal.ReleaseComObject(enumerator);
         }
         catch (Exception ex)
         {
             _ = ex; // Suppress warning
             // Non-fatal — JS layer still works independently
+        }
+        finally
+        {
+            if (store != null) Marshal.ReleaseComObject(store);
+            if (device != null) Marshal.ReleaseComObject(device);
+            if (enumerator != null) Marshal.ReleaseComObject(enumerator);
         }
     }
 

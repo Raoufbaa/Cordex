@@ -36,13 +36,13 @@ public static class PerformanceManager
     private const uint PROCESS_SET_INFORMATION = 0x0200;
     private const uint PROCESS_QUERY_INFORMATION = 0x0400;
 
-    private static readonly HashSet<int> _trackedCefProcessIds = new();
+    private static readonly HashSet<int> _trackedWebViewProcessIds = new();
     private static int _mainProcessId;
     private static readonly Dictionary<int, TimeSpan> _lastCpuTimes = new();
     private static readonly Dictionary<int, DateTime> _lastCpuCheck = new();
     private static readonly Dictionary<int, double> _lastCpuUsage = new();
 
-    private static List<Process> _cachedCefProcesses = new();
+    private static List<Process> _cachedWebViewProcesses = new();
     private static DateTime _lastProcessScan = DateTime.MinValue;
     
     // Track if we're in an active voice connection to avoid aggressive throttling
@@ -210,9 +210,9 @@ public static class PerformanceManager
             {
                 try
                 {
-                    if (!_trackedCefProcessIds.Contains(webViewProc.Id))
+                    if (!_trackedWebViewProcessIds.Contains(webViewProc.Id))
                     {
-                        _trackedCefProcessIds.Add(webViewProc.Id);
+                        _trackedWebViewProcessIds.Add(webViewProc.Id);
                     }
 
                     // Apply CPU affinity - STRICT
@@ -280,21 +280,44 @@ public static class PerformanceManager
             }
 
             // Clean up exited processes
-            _cachedCefProcesses.RemoveAll(p => 
+            _cachedWebViewProcesses.RemoveAll(p => 
             {
-                try { return p.HasExited; }
-                catch { return true; }
+                try 
+                { 
+                    if (p.HasExited)
+                    {
+                        p.Dispose();
+                        return true;
+                    }
+                    return false;
+                }
+                catch 
+                { 
+                    try { p.Dispose(); } catch { }
+                    return true; 
+                }
             });
 
             // 1. Clean up stale processes from cache first (fast, no system-wide scan)
-            for (int i = _cachedCefProcesses.Count - 1; i >= 0; i--)
+            for (int i = _cachedWebViewProcesses.Count - 1; i >= 0; i--)
             {
-                try { if (_cachedCefProcesses[i].HasExited) _cachedCefProcesses.RemoveAt(i); }
-                catch { _cachedCefProcesses.RemoveAt(i); }
+                try 
+                { 
+                    if (_cachedWebViewProcesses[i].HasExited)
+                    {
+                        _cachedWebViewProcesses[i].Dispose();
+                        _cachedWebViewProcesses.RemoveAt(i); 
+                    }
+                }
+                catch 
+                { 
+                    try { _cachedWebViewProcesses[i].Dispose(); } catch { }
+                    _cachedWebViewProcesses.RemoveAt(i); 
+                }
             }
 
             // 2. Rescan via snapshot only if cache is empty or 90s elapsed
-            if (_cachedCefProcesses.Count == 0 || (DateTime.Now - _lastProcessScan).TotalSeconds > 90)
+            if (_cachedWebViewProcesses.Count == 0 || (DateTime.Now - _lastProcessScan).TotalSeconds > 90)
             {
                 var mainProcess = Process.GetCurrentProcess();
                 var childIds = ProcessHelper.GetChildProcessIds(mainProcess.Id);
@@ -310,6 +333,16 @@ public static class PerformanceManager
                     }
                 }
 
+                // Purge stale CPU tracking data for processes that no longer exist
+                var activePids = new HashSet<int>(childIds) { mainProcess.Id };
+                var staleCpuTimesPids = _lastCpuTimes.Keys.Where(pid => !activePids.Contains(pid)).ToList();
+                foreach (var pid in staleCpuTimesPids)
+                {
+                    _lastCpuTimes.Remove(pid);
+                    _lastCpuCheck.Remove(pid);
+                    _lastCpuUsage.Remove(pid);
+                }
+
                 foreach (var id in childIds)
                 {
                     try
@@ -318,16 +351,20 @@ public static class PerformanceManager
                         
                         // If already in cache, skip
                         bool alreadyTracked = false;
-                        for (int j = 0; j < _cachedCefProcesses.Count; j++)
+                        for (int j = 0; j < _cachedWebViewProcesses.Count; j++)
                         {
-                            if (_cachedCefProcesses[j].Id == id) { alreadyTracked = true; break; }
+                            if (_cachedWebViewProcesses[j].Id == id) { alreadyTracked = true; break; }
                         }
                         if (alreadyTracked) continue;
 
                         var proc = Process.GetProcessById(id);
                         if (proc.ProcessName.Contains("msedgewebview2", StringComparison.OrdinalIgnoreCase))
                         {
-                            _cachedCefProcesses.Add(proc);
+                            _cachedWebViewProcesses.Add(proc);
+                        }
+                        else
+                        {
+                            proc.Dispose(); // Dispose immediately if we aren't tracking it
                         }
                     }
                     catch { }
@@ -341,7 +378,7 @@ public static class PerformanceManager
             Debug.WriteLine($"Failed to get WebView2 processes: {ex.Message}");
         }
 
-        return _cachedCefProcesses.ToList();
+        return _cachedWebViewProcesses.ToList();
     }
 
     public static void RunMonitoringCycle()

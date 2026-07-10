@@ -151,27 +151,6 @@ begin
       
       WizardForm.ProgressGauge.Style := npbstNormal; // restore progress gauge
     end;
-  end
-  else if CurStep = ssPostInstall then
-  begin
-    // Hide wwwroot folder if it exists
-    wwwrootPath := ExpandConstant('{app}\wwwroot');
-    if DirExists(wwwrootPath) then
-      Exec('cmd.exe', '/c attrib +h +s "' + wwwrootPath + '"', '',
-        SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 end;
 
-procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
-var
-  wwwrootPath: String;
-begin
-  if CurUninstallStep = usUninstall then
-  begin
-    // Unhide wwwroot before uninstalling
-    wwwrootPath := ExpandConstant('{app}\wwwroot');
-    if DirExists(wwwrootPath) then
-      Exec('cmd.exe', '/c attrib -h -s "' + wwwrootPath + '"', '',
-        SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  end;
-end;

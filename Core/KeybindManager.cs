@@ -38,6 +38,10 @@ public class KeybindManager
         bool muteOk = RegisterHotKey(_hwnd, ID_MUTE, s.Mute.Modifiers | MOD_NOREPEAT, s.Mute.VirtualKey);
         bool deafenOk = RegisterHotKey(_hwnd, ID_DEAFEN, s.Deafen.Modifiers | MOD_NOREPEAT, s.Deafen.VirtualKey);
         bool focusOk = RegisterHotKey(_hwnd, ID_FOCUS, s.Focus.Modifiers | MOD_NOREPEAT, s.Focus.VirtualKey);
+
+        if (!muteOk) Debug.WriteLine("KeybindManager: Failed to register Mute hotkey.");
+        if (!deafenOk) Debug.WriteLine("KeybindManager: Failed to register Deafen hotkey.");
+        if (!focusOk) Debug.WriteLine("KeybindManager: Failed to register Focus hotkey.");
     }
 
     public void Unregister()
