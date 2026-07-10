@@ -103,6 +103,7 @@ public partial class MainWindow : Window
     [DllImport("user32.dll")]  private static extern IntPtr MonitorFromWindow    (IntPtr hwnd, uint flags);
     [DllImport("user32.dll")]  private static extern bool   GetMonitorInfo       (IntPtr hMon, ref MONITORINFO mi);
     [DllImport("user32.dll")]  private static extern IntPtr SendMessage          (IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")]  private static extern bool   ReleaseCapture       ();
     [DllImport("shell32.dll")] private static extern IntPtr SHAppBarMessage      (uint msg, ref APPBARDATA data);
     [DllImport("dwmapi.dll")]  private static extern int    DwmSetWindowAttribute(IntPtr hwnd, uint attr, ref int attrValue, int attrSize);
     [DllImport("user32.dll")]  private static extern bool   SetWindowPos         (IntPtr hwnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
@@ -228,8 +229,17 @@ public partial class MainWindow : Window
 
             if (y >= 0 && y <= DragHeight && x > LeftReserve && x < w - RightReserve)
             {
-                handled = true;
-                return new IntPtr(HTCAPTION);
+                // Exclude the 70% wide top-center transparent drag bar region from HTCAPTION
+                // so mouse events reach the WebView's drag bar
+                double dragBarWidth = w * 1;
+                double dragBarHeight = 32;
+                bool isOverDragBar = y >= 0 && y <= dragBarHeight && x > (w - dragBarWidth) / 2 && x < (w + dragBarWidth) / 2;
+
+                if (!isOverDragBar)
+                {
+                    handled = true;
+                    return new IntPtr(HTCAPTION);
+                }
             }
         }
 
@@ -587,7 +597,13 @@ public partial class MainWindow : Window
             }
             else if (message == "window:drag")
             {
-                try { DragMove(); } catch { }
+                try
+                {
+                    var hwnd = new WindowInteropHelper(this).Handle;
+                    ReleaseCapture();
+                    SendMessage(hwnd, 0x00A1 /* WM_NCLBUTTONDOWN */, new IntPtr(2 /* HTCAPTION */), IntPtr.Zero);
+                }
+                catch { }
             }
         });
     }
@@ -908,6 +924,22 @@ public partial class MainWindow : Window
             padding-left: 85px !important;
             transition: padding-left 0.2s ease;
         }
+        #cordex-notch {
+            position: fixed;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 999999;
+            width: 80%;
+            height: 32px;
+            background: transparent;
+            cursor: grab;
+            display: block;
+            pointer-events: auto;
+        }
+        #cordex-notch:active {
+            cursor: grabbing;
+        }
     `;
     document.head.appendChild(style);
 
@@ -927,6 +959,11 @@ public partial class MainWindow : Window
     `;
     document.body.appendChild(titlebar);
 
+    // Create drag bar container
+    const notch = document.createElement('div');
+    notch.id = 'cordex-notch';
+    document.body.appendChild(notch);
+
     // Wire events
     titlebar.querySelector('.cordex-close').addEventListener('click', () => {
         window.chrome.webview.postMessage('window:close');
@@ -943,7 +980,7 @@ public partial class MainWindow : Window
 
     // Drag helper mapping
     document.addEventListener('mousedown', (e) => {
-        const header = e.target.closest('[class*=\'title-\'], [class*=\'header-\'], #cordex-titlebar');
+        const header = e.target.closest('[class*=\'title-\'], [class*=\'header-\'], #cordex-titlebar, #cordex-notch');
         if (header) {
             const interactive = e.target.closest('button, input, a, [role=\'button\'], [class*=\'clickable-\'], [class*=\'iconWrapper-\']');
             if (!interactive) {
