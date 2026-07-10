@@ -128,6 +128,7 @@ begin
       WizardForm.ProgressGauge.Style := npbstMarquee;
       
       InstallerPath := ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe');
+      ExtractTemporaryFile('MicrosoftEdgeWebview2Setup.exe');
       if FileExists(InstallerPath) then
       begin
         // Run WebView2 installer silently and wait for it to finish
